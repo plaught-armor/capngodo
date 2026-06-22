@@ -53,24 +53,24 @@ excluded when packaging the addon for release.
 Read a message whose layout you know:
 
 ```gdscript
-var msg := CapnReader.open(bytes, false)        # false = not packed
-var root := msg.get_root()                       # StructReader
-var id := root.get_u32(0, 0)                      # data offset 0, default 0
-var name := root.get_text(0)                      # pointer field 0
-var items := root.get_list(1)                     # pointer field 1 -> ListReader
-for i in items.size():
-    var item := items.get_struct(i)               # composite-list element
+var msg: CapnReader.Message = CapnReader.open(bytes, false)   # false = not packed
+var root: CapnReader.StructReader = msg.get_root()
+var id: int = root.get_u32(0, 0)                  # data offset 0, default 0
+var name: String = root.get_text(0)               # pointer field 0
+var items: CapnReader.ListReader = root.get_list(1)  # pointer field 1
+for i: int in items.size():
+    var item: CapnReader.StructReader = items.get_struct(i)  # composite-list element
 ```
 
 Write one:
 
 ```gdscript
-var b := CapnBuilder.new_message(1, 2)            # data_words=1, ptr_words=2
+var b: CapnBuilder.StructBuilder = CapnBuilder.new_message(1, 2)  # data_words=1, ptr_words=2
 b.set_u32(0, 42, 0)                               # offset, value, default
 b.set_text(0, "hello")                            # pointer field 0
-var child := b.init_struct(1, 1, 0)               # ptr field 1, child dw=1 pw=0
+var child: CapnBuilder.StructBuilder = b.init_struct(1, 1, 0)  # ptr field 1, child dw=1 pw=0
 child.set_u32(0, 7, 0)
-var bytes := CapnBuilder.to_bytes(b, false)       # false = not packed
+var bytes: PackedByteArray = CapnBuilder.to_bytes(b, false)   # false = not packed
 ```
 
 The offsets come from your schema (run `capnp compile -ocapnp` to see them, or
@@ -117,23 +117,31 @@ For `samples/addressbook.capnp`, the generated `AddressbookCapnp` gives you:
 
 ```gdscript
 # Build
-var ab := AddressbookCapnp.new_address_book()
-var people := ab.init_people(1)
-people[0].set_id(123)
-people[0].set_name("Alice")
-var phones := people[0].init_phones(1)
-phones[0].set_number("555-1212")
-phones[0].set_type(AddressbookCapnp.Person_PhoneNumber_Type.MOBILE)
-people[0].set_employment_employer("Acme")       # union member
-var bytes := ab.to_bytes()
+var ab: AddressbookCapnp.AddressBook.Builder = AddressbookCapnp.new_address_book()
+var people: Array = ab.init_people(1)
+var alice: AddressbookCapnp.Person.Builder = people[0]
+alice.set_id(123)
+alice.set_name("Alice")
+var phones: Array = alice.init_phones(1)
+var phone: AddressbookCapnp.Person_PhoneNumber.Builder = phones[0]
+phone.set_number("555-1212")
+phone.set_type(AddressbookCapnp.Person_PhoneNumber_Type.MOBILE)
+alice.set_employment_employer("Acme")            # union member
+var bytes: PackedByteArray = ab.to_bytes()
 
 # Read
-var r := AddressbookCapnp.read_address_book(bytes)
-for p in r.get_people():
+var r: AddressbookCapnp.AddressBook.Reader = AddressbookCapnp.read_address_book(bytes)
+var read_people: Array = r.get_people()
+for i: int in read_people.size():
+    var p: AddressbookCapnp.Person.Reader = read_people[i]
     print(p.get_id(), p.get_name())
     if p.is_employment_employer():
         print("works at ", p.get_employment_employer())
 ```
+
+(List getters return an untyped `Array` for now — its elements are the typed
+`Reader`/`Builder`, assigned to a typed local as above. Typed `Array[T]` returns
+are tracked as CQ1 in [`docs/DEFERRED.md`](docs/DEFERRED.md).)
 
 Generated API per struct: `Reader.get_<field>()`, `Builder.set_<field>()` /
 `init_<field>()` / `to_bytes()`, top-level `new_<root>()` / `read_<root>()`.
