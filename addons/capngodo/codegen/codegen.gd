@@ -245,9 +245,37 @@ static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnR
 	if tw == CapnSchema.TypeWhich.LIST:
 		_emit_list_getter(lines, suffix, off, CapnSchema.type_list_element(t), flat_by_id)
 		return
+	# A generic type-parameter field (and an explicit `:AnyPointer`) is a plain
+	# pointer slot on the wire — type-erased. Expose the four pointer
+	# interpretations; the caller picks the one matching the concrete binding.
+	if tw == CapnSchema.TypeWhich.ANY_POINTER:
+		_emit_anyptr_getter(lines, suffix, off)
+		return
 	lines.append("")
 	lines.append(TAB + TAB + "func get_%s() -> %s:" % [suffix, _return_type(tw, t, flat_by_id)])
 	lines.append(TAB + TAB + TAB + "return %s" % _scalar_expr("_r", tw, t, off, flat_by_id, _default_for(f, tw)))
+
+
+## Type-erased reader accessors for an AnyPointer / generic-parameter slot.
+## has_<f>() reports presence; get_<f>_struct/list/text/data() interpret the
+## same pointer as each pointer kind (the wire stores no element type, so the
+## caller resolves it from the concrete binding it knows statically).
+static func _emit_anyptr_getter(lines: PackedStringArray, suffix: String, off: int) -> void:
+	lines.append("")
+	lines.append(TAB + TAB + "func has_%s() -> bool:" % suffix)
+	lines.append(TAB + TAB + TAB + "return _r.has_ptr(%d)" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func get_%s_struct() -> CapnReader.StructReader:" % suffix)
+	lines.append(TAB + TAB + TAB + "return _r.get_struct(%d)" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func get_%s_list() -> CapnReader.ListReader:" % suffix)
+	lines.append(TAB + TAB + TAB + "return _r.get_list(%d)" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func get_%s_text() -> String:" % suffix)
+	lines.append(TAB + TAB + TAB + "return _r.get_text(%d, \"\")" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func get_%s_data() -> PackedByteArray:" % suffix)
+	lines.append(TAB + TAB + TAB + "return _r.get_data(%d)" % off)
 
 
 ## Union (group) reader: <group>_which() + per-member is_/get_ accessors.
@@ -333,11 +361,48 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 			lines.append(disc_line)
 		lines.append(TAB + TAB + TAB + "return %s.Builder.wrap(_b.init_struct(%d, %s.DATA_WORDS, %s.PTR_WORDS))" % [child, off, child, child])
 		return
+	if tw == CapnSchema.TypeWhich.ANY_POINTER:
+		_emit_anyptr_setter(lines, suffix, off, disc_line)
+		return
 	lines.append("")
 	lines.append(TAB + TAB + "func set_%s(value: %s) -> void:" % [suffix, _return_type(tw, t, flat_by_id)])
 	if disc_line != "":
 		lines.append(disc_line)
 	lines.append(TAB + TAB + TAB + _scalar_set("_b", tw, off, _default_for(f, tw)))
+
+
+## Type-erased builder accessors for an AnyPointer / generic-parameter slot.
+## Mirrors _emit_anyptr_getter: init_<f>_struct allocates the pointee and returns
+## the RAW StructBuilder (the caller wraps it in the concrete type's Builder);
+## init_<f>_list/composite_list return a ListBuilder used directly; set_<f>_text/
+## data write a pointer payload. Each entry point writes the slot, so each writes
+## the union discriminant first when the field is a union member.
+static func _emit_anyptr_setter(lines: PackedStringArray, suffix: String, off: int, disc_line: String) -> void:
+	lines.append("")
+	lines.append(TAB + TAB + "func init_%s_struct(data_words: int, ptr_words: int) -> CapnBuilder.StructBuilder:" % suffix)
+	if disc_line != "":
+		lines.append(disc_line)
+	lines.append(TAB + TAB + TAB + "return _b.init_struct(%d, data_words, ptr_words)" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func init_%s_list(elem_size: CapnPointer.ElemSize, count: int) -> CapnBuilder.ListBuilder:" % suffix)
+	if disc_line != "":
+		lines.append(disc_line)
+	lines.append(TAB + TAB + TAB + "return _b.init_list(%d, elem_size, count)" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func init_%s_composite_list(count: int, data_words: int, ptr_words: int) -> CapnBuilder.ListBuilder:" % suffix)
+	if disc_line != "":
+		lines.append(disc_line)
+	lines.append(TAB + TAB + TAB + "return _b.init_composite_list(%d, count, data_words, ptr_words)" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func set_%s_text(value: String) -> void:" % suffix)
+	if disc_line != "":
+		lines.append(disc_line)
+	lines.append(TAB + TAB + TAB + "_b.set_text(%d, value)" % off)
+	lines.append("")
+	lines.append(TAB + TAB + "func set_%s_data(value: PackedByteArray) -> void:" % suffix)
+	if disc_line != "":
+		lines.append(disc_line)
+	lines.append(TAB + TAB + TAB + "_b.set_data(%d, value)" % off)
 
 
 static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary, disc_line: String = "") -> void:
