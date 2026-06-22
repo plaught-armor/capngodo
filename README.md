@@ -61,9 +61,10 @@ Capability pointers decode to a table index so cap-bearing messages don't crash.
 
 - **Godot 4.6+** — runtime + codegen.
 - **GUT** (`addons/gut`) — only to run the test suite (vendored in this repo).
-- **`capnp`** — only to *generate* typed classes. Build it from source
-  (`tools/build_capnp.sh`) or install a package (`pacman -S capnproto`,
-  `apt install capnproto`, `brew install capnp`).
+- **`capnp`** — only to *generate* typed classes. Install a release
+  (`apt-get install capnproto`, `brew install capnp`, or the prebuilt Windows
+  zip — see [capnproto.org/install](https://capnproto.org/install.html)) or build
+  from source (`tools/build_capnp.sh`).
 
 ## Install
 
@@ -169,15 +170,26 @@ bit pattern (`def_bits`), not the float value.
 
 ### 1. Get `capnp`
 
+Install a release ([capnproto.org/install](https://capnproto.org/install.html)):
+
+- **Debian/Ubuntu**: `sudo apt-get install capnproto`
+- **macOS**: `brew install capnp`
+- **Windows**: download the prebuilt zip from
+  [capnproto.org](https://capnproto.org/install.html#installation-windows) and put
+  `capnp.exe` on your `PATH`.
+- **From the release tarball** (any Unix): `curl -O
+  https://capnproto.org/capnproto-c++-1.4.0.tar.gz && tar zxf … && ./configure &&
+  make -j && sudo make install`.
+
+Or build the local checkout (no sudo) — prints the binary path:
+
 ```sh
-# Linux/macOS — build from source (no sudo) or install a package:
 export CAPNPROTO_SRC=/path/to/capnproto      # a Cap'n Proto source checkout
-CAPNP="$(tools/build_capnp.sh)"              # builds + prints the binary path
-# ...or: pacman -S capnproto / apt install capnproto / brew install capnp
+CAPNP="$(tools/build_capnp.sh)"
 ```
 
-On **Windows**, install `capnp` via a package manager — `choco install capnproto`,
-`scoop install capnproto`, or `vcpkg install capnproto` — then use `capnp.exe`.
+Tested with capnp 2.0-dev; 0.10+ / 1.x should also work (the `schema.capnp`
+meta-format the codegen reads is stable across these).
 
 ### 2. Configure the plugin shim
 
