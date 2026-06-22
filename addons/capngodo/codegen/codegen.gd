@@ -33,7 +33,7 @@ class CodegenEntry extends RefCounted:
 
 
 static func generate_files(cgr: CapnReader.StructReader) -> Dictionary[String, String]:
-	var nodes_by_id: Dictionary = _index_nodes(cgr)
+	var nodes_by_id: Dictionary[int, CapnReader.StructReader] = _index_nodes(cgr)
 	var out: Dictionary[String, String] = {}
 	var reqs: CapnReader.ListReader = CapnSchema.cgr_requested_files(cgr)
 	for i: int in reqs.size():
@@ -49,7 +49,7 @@ static func generate_files(cgr: CapnReader.StructReader) -> Dictionary[String, S
 
 # --- node collection -----------------------------------------------------
 
-static func _index_nodes(cgr: CapnReader.StructReader) -> Dictionary:
+static func _index_nodes(cgr: CapnReader.StructReader) -> Dictionary[int, CapnReader.StructReader]:
 	var by_id: Dictionary[int, CapnReader.StructReader] = {}
 	var nodes: CapnReader.ListReader = CapnSchema.cgr_nodes(cgr)
 	for i: int in nodes.size():
@@ -61,14 +61,14 @@ static func _index_nodes(cgr: CapnReader.StructReader) -> Dictionary:
 ## Walk the file's nested-node tree, building flat names (Person.PhoneNumber ->
 ## "Person_PhoneNumber"). Returns an ordered Array[CodegenEntry] and fills
 ## flat_by_id (node id -> flat name) for cross-references.
-static func _collect(file_node: CapnReader.StructReader, by_id: Dictionary, flat_by_id: Dictionary) -> Array:
-	var result: Array = []
+static func _collect(file_node: CapnReader.StructReader, by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String]) -> Array[CodegenEntry]:
+	var result: Array[CodegenEntry] = []
 	var used: Dictionary[String, bool] = {}
 	_walk(file_node, "", by_id, result, flat_by_id, used)
 	return result
 
 
-static func _walk(node: CapnReader.StructReader, prefix: String, by_id: Dictionary, result: Array, flat_by_id: Dictionary, used: Dictionary) -> void:
+static func _walk(node: CapnReader.StructReader, prefix: String, by_id: Dictionary[int, CapnReader.StructReader], result: Array[CodegenEntry], flat_by_id: Dictionary[int, String], used: Dictionary[String, bool]) -> void:
 	var nested: CapnReader.ListReader = CapnSchema.node_nested_nodes(node)
 	for i: int in nested.size():
 		var nn: CapnReader.StructReader = nested.get_struct(i)
@@ -86,7 +86,7 @@ static func _walk(node: CapnReader.StructReader, prefix: String, by_id: Dictiona
 
 ## Disambiguate a name that already exists (post-mangle or legitimate clash) by
 ## suffixing _2, _3, … so two schema types never produce the same GDScript class.
-static func _uniquify(flat: String, used: Dictionary) -> String:
+static func _uniquify(flat: String, used: Dictionary[String, bool]) -> String:
 	if not used.has(flat):
 		return flat
 	var n: int = 2
@@ -98,9 +98,9 @@ static func _uniquify(flat: String, used: Dictionary) -> String:
 
 # --- emission ------------------------------------------------------------
 
-static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by_id: Dictionary) -> String:
-	var flat_by_id: Dictionary = {}
-	var types: Array = _collect(file_node, by_id, flat_by_id)
+static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by_id: Dictionary[int, CapnReader.StructReader]) -> String:
+	var flat_by_id: Dictionary[int, String] = {}
+	var types: Array[CodegenEntry] = _collect(file_node, by_id, flat_by_id)
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("class_name %s extends RefCounted" % _umbrella_class(fname))
 	lines.append("")
@@ -138,7 +138,7 @@ static func _emit_enum(lines: PackedStringArray, entry: CodegenEntry) -> void:
 	lines.append("")
 
 
-static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_id: Dictionary, by_id: Dictionary) -> void:
+static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader]) -> void:
 	var node: CapnReader.StructReader = entry.node
 	var flat: String = entry.flat
 	var fields: CapnReader.ListReader = CapnSchema.node_struct_fields(node)
@@ -192,7 +192,7 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 
 ## Returns the group's type node if `f` is a union group (discriminantCount > 0),
 ## else null. Named (non-discriminated) groups and plain slots return null.
-static func _union_node(f: CapnReader.StructReader, by_id: Dictionary) -> CapnReader.StructReader:
+static func _union_node(f: CapnReader.StructReader, by_id: Dictionary[int, CapnReader.StructReader]) -> CapnReader.StructReader:
 	if CapnSchema.field_which(f) != CapnSchema.FieldWhich.GROUP:
 		return null
 	var gnode: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(f))
@@ -205,7 +205,7 @@ static func _union_node(f: CapnReader.StructReader, by_id: Dictionary) -> CapnRe
 ## including unions nested inside named groups. The enum name tracks the
 ## flattened accessor prefix (path joined by "_", pascal-cased in
 ## _emit_union_enum) so `state.mode` -> enum StateMode matches state_mode_which().
-static func _emit_field_union_enums(lines: PackedStringArray, prefix: String, fields: CapnReader.ListReader, by_id: Dictionary) -> void:
+static func _emit_field_union_enums(lines: PackedStringArray, prefix: String, fields: CapnReader.ListReader, by_id: Dictionary[int, CapnReader.StructReader]) -> void:
 	for i: int in fields.size():
 		var gf: CapnReader.StructReader = fields.get_struct(i)
 		var fname: String = _snake(CapnSchema.field_name(gf))
@@ -236,7 +236,7 @@ static func _emit_union_enum(lines: PackedStringArray, name_snake: String, gnode
 	lines.append(TAB + "enum %s { %s }" % [_safe_type(_pascal(name_snake)), ", ".join(ordered)])
 
 
-static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary, by_id: Dictionary, struct_disc: int) -> void:
+static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], struct_disc: int) -> void:
 	var fname: String = _safe_member(_snake(CapnSchema.field_name(f)))
 	# Any struct-level union arm — slot, named group, or union group — gets an
 	# outer is_<name>() selector first.
@@ -271,7 +271,7 @@ static func _emit_is_arm(lines: PackedStringArray, fname: String, struct_disc: i
 
 
 ## Emit a get_<suffix>() reader for a slot field. Void fields produce nothing.
-static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary) -> void:
+static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> void:
 	var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
 	var off: int = CapnSchema.field_slot_offset(f)
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
@@ -314,7 +314,7 @@ static func _emit_anyptr_getter(lines: PackedStringArray, suffix: String, off: i
 
 
 ## Union (group) reader: <group>_which() + per-member is_/get_ accessors.
-static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary) -> void:
+static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> void:
 	var disc: int = _disc_byte(gnode)
 	lines.append("")
 	lines.append(TAB + TAB + "func %s_which() -> int:" % gsnake)
@@ -334,7 +334,7 @@ static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode:
 ## fields share the parent's data/pointer layout, so flatten them into
 ## get_<group>_<field>() accessors. Recurses for nested named groups and
 ## delegates to _emit_union_getters for a union nested inside the group.
-static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary, by_id: Dictionary) -> void:
+static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader]) -> void:
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
 		var m: CapnReader.StructReader = members.get_struct(i)
@@ -353,7 +353,7 @@ static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, 
 			_emit_slot_getter(lines, full, m, flat_by_id)
 
 
-static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary) -> void:
+static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> void:
 	var ew: CapnSchema.TypeWhich = CapnSchema.type_which(elem)
 	# Type the returned container by element kind for autocomplete at the call
 	# site. Indexed writes into a typed Array carry the element type directly —
@@ -373,7 +373,7 @@ static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int,
 ## when the element type is erased/unresolved (AnyPointer, list-of-list,
 ## interface, void, or a cross-file struct not yet in flat_by_id). Checks
 ## _flat_of directly for structs rather than reading _return_type's sentinel.
-static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary) -> String:
+static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
 	if ew == CapnSchema.TypeWhich.ANY_POINTER or ew == CapnSchema.TypeWhich.LIST or ew == CapnSchema.TypeWhich.INTERFACE or ew == CapnSchema.TypeWhich.VOID:
 		return "Array"
 	if ew == CapnSchema.TypeWhich.STRUCT:
@@ -384,7 +384,7 @@ static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.Stru
 
 # --- setters (Builder) ---------------------------------------------------
 
-static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary, by_id: Dictionary, struct_disc: int) -> void:
+static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], struct_disc: int) -> void:
 	var fname: String = _safe_member(_snake(CapnSchema.field_name(f)))
 	var gnode: CapnReader.StructReader = _union_node(f, by_id)
 	if gnode != null:
@@ -420,7 +420,7 @@ static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructRea
 
 ## Emit a setter (set_/init_) for a slot field. When disc_off >= 0 the field is
 ## a union member, so the setter writes the discriminant first.
-static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary, disc_off: int, disc_val: int, outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
+static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_off: int, disc_val: int, outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
 	var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
 	var off: int = CapnSchema.field_slot_offset(f)
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
@@ -500,7 +500,7 @@ static func _emit_anyptr_setter(lines: PackedStringArray, suffix: String, off: i
 	lines.append(TAB + TAB + TAB + "_b.set_data(%d, value)" % off)
 
 
-static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary, disc_line: String = "") -> void:
+static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_line: String = "") -> void:
 	var ew: CapnSchema.TypeWhich = CapnSchema.type_which(elem)
 	lines.append("")
 	if ew == CapnSchema.TypeWhich.STRUCT:
@@ -532,7 +532,7 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 ## When the group is itself a struct-level union arm, outer_disc_off/val are
 ## threaded to each member setter so it also selects this group on the outer
 ## union (CG4).
-static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary, outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
+static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
 	var disc: int = _disc_byte(gnode)
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
@@ -549,7 +549,7 @@ static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode:
 ## named groups; delegates to _emit_union_setters for a union nested in the group.
 ## When the group is itself a struct-level union arm, outer_disc_off/val thread
 ## down to every leaf setter so selecting any leaf selects this arm (CG4).
-static func _emit_named_group_setters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary, by_id: Dictionary, outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
+static func _emit_named_group_setters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
 		var m: CapnReader.StructReader = members.get_struct(i)
@@ -774,7 +774,7 @@ static func _elem_size_token(ew: CapnSchema.TypeWhich) -> String:
 
 # --- type -> expression mapping ------------------------------------------
 
-static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, off: int, flat_by_id: Dictionary, def: String) -> String:
+static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, off: int, flat_by_id: Dictionary[int, String], def: String) -> String:
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "%s.get_bool(%d, %s)" % [recv, off, def]
 	elif tw == CapnSchema.TypeWhich.INT8:
@@ -814,7 +814,7 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 	return "null  # TODO(M6): type %d" % tw
 
 
-static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary) -> String:
+static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _flat_of(elem, flat_by_id)
 		if flat == "":
@@ -853,7 +853,7 @@ static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructRea
 	return "null  # TODO(M6): list elem type %d" % ew
 
 
-static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, flat_by_id: Dictionary) -> String:
+static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "bool"
 	elif tw == CapnSchema.TypeWhich.FLOAT32 or tw == CapnSchema.TypeWhich.FLOAT64:
@@ -877,7 +877,7 @@ static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, f
 ## Flattened GDScript name for a struct/enum type, or "" if unresolved (a
 ## cross-file ref, unsupported until M6). Callers must keep generated syntax
 ## valid when this returns "".
-static func _flat_of(type_reader: CapnReader.StructReader, flat_by_id: Dictionary) -> String:
+static func _flat_of(type_reader: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
 	var id: int = CapnSchema.type_id(type_reader)
 	if not flat_by_id.has(id):
 		push_error("[CapnCodegen] unresolved type id %d (cross-file refs land in M6)" % id)
