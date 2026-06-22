@@ -1,5 +1,8 @@
 # capngodo
 
+[![tests](https://github.com/plaught-armor/capngodo/actions/workflows/tests.yml/badge.svg)](https://github.com/plaught-armor/capngodo/actions/workflows/tests.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A [Cap'n Proto](https://capnproto.org/) serializer/deserializer **and schema
 code generator** for Godot 4.6+ / GDScript. Inspired by
 [godobuf](https://github.com/oniksan/godobuf) (the same idea, for Protobuf).

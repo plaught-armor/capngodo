@@ -1,0 +1,28 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gut:
+    runs-on: ubuntu-latest
+    env:
+      # Godot 4.4+ is required (typed Dictionary). Bump as needed; the project
+      # targets 4.6+. No capnp needed — tests use committed fixtures.
+      GODOT_VERSION: 4.4.1-stable
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Godot (headless)
+        run: |
+          set -eu
+          url="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}/Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          wget -q "$url" -O godot.zip
+          unzip -q godot.zip
+          mv "Godot_v${GODOT_VERSION}_linux.x86_64" godot
+          chmod +x godot
+          ./godot --version
+
+      - name: Run GUT suite
+        run: CAPNGODO_GODOT="$PWD/godot" sh tools/run_tests.sh
