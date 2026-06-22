@@ -144,3 +144,42 @@ func test_generated_sources_compile() -> void:
 		script.source_code = files[fname]
 		var err: int = script.reload()
 		assert_true(err == OK or err == ERR_PARSE_ERROR, "%s parses (err=%d)" % [fname, err])
+
+
+func test_typed_list_returns_assign_to_typed_locals() -> void:
+	# CQ1: list getters/setters return Array[T], so they assign directly to a
+	# typed local. Assigning an untyped Array to a typed Array[T] local fails at
+	# runtime, so these typed locals are a real regression guard on the return
+	# type (no C3 .assign() round-trip needed).
+	var ab: AddressbookCapnp.AddressBook.Reader = AddressbookCapnp.read_address_book(_read_bytes("res://tests/fixtures/addressbook_msg.bin"))
+	var people: Array[AddressbookCapnp.Person.Reader] = ab.get_people()
+	assert_eq(people.size(), 2, "two people")
+	assert_eq(people[0].get_name(), "Alice", "typed element keeps its API")
+	var phones: Array[AddressbookCapnp.Person_PhoneNumber.Reader] = people[0].get_phones()
+	assert_eq(phones.size(), 1, "one phone")
+
+	var b: AddressbookCapnp.AddressBook.Builder = AddressbookCapnp.new_address_book()
+	var bpeople: Array[AddressbookCapnp.Person.Builder] = b.init_people(1)
+	assert_eq(bpeople.size(), 1, "builder list is typed too")
+	bpeople[0].set_name("Solo")
+	assert_eq(AddressbookCapnp.read_address_book(b.to_bytes()).get_people()[0].get_name(), "Solo", "round-trip")
+
+
+func test_typed_text_and_primitive_list_returns() -> void:
+	# CQ1 for non-struct elements: Text list -> Array[String], Int32 list ->
+	# Array[int]. Typed locals guard those element-type branches.
+	var root: InteropCapnp.Root.Builder = InteropCapnp.new_root()
+	var tb: CapnBuilder.ListBuilder = root.init_tags(2)
+	tb.set_text(0, "alpha")
+	tb.set_text(1, "bravo")
+	var sb: CapnBuilder.ListBuilder = root.init_scores(2)
+	sb.set_i32(0, 10)
+	sb.set_i32(1, -20)
+
+	var r: InteropCapnp.Root.Reader = InteropCapnp.read_root(root.to_bytes())
+	var tags: Array[String] = r.get_tags()
+	var scores: Array[int] = r.get_scores()
+	assert_eq(tags.size(), 2, "two tags")
+	assert_eq(tags[0], "alpha", "Array[String] element")
+	assert_eq(scores.size(), 2, "two scores")
+	assert_eq(scores[1], -20, "Array[int] element")

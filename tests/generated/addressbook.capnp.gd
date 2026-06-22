@@ -26,9 +26,9 @@ class Person extends RefCounted:
 		func get_email() -> String:
 			return _r.get_text(1, "")
 
-		func get_phones() -> Array:
+		func get_phones() -> Array[Person_PhoneNumber.Reader]:
 			var lr: CapnReader.ListReader = _r.get_list(2)
-			var out: Array = []
+			var out: Array[Person_PhoneNumber.Reader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
 				out[i] = Person_PhoneNumber.Reader.wrap(lr.get_struct(i))
@@ -75,9 +75,9 @@ class Person extends RefCounted:
 		func set_email(value: String) -> void:
 			_b.set_text(1, value)
 
-		func init_phones(n: int) -> Array:
+		func init_phones(n: int) -> Array[Person_PhoneNumber.Builder]:
 			var lb: CapnBuilder.ListBuilder = _b.init_composite_list(2, n, Person_PhoneNumber.DATA_WORDS, Person_PhoneNumber.PTR_WORDS)
-			var out: Array = []
+			var out: Array[Person_PhoneNumber.Builder] = []
 			out.resize(n)
 			for i: int in n:
 				out[i] = Person_PhoneNumber.Builder.wrap(lb.init_struct(i))
@@ -144,9 +144,9 @@ class AddressBook extends RefCounted:
 			o._r = r
 			return o
 
-		func get_people() -> Array:
+		func get_people() -> Array[Person.Reader]:
 			var lr: CapnReader.ListReader = _r.get_list(0)
-			var out: Array = []
+			var out: Array[Person.Reader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
 				out[i] = Person.Reader.wrap(lr.get_struct(i))
@@ -163,9 +163,9 @@ class AddressBook extends RefCounted:
 		func to_bytes(packed: bool = false) -> PackedByteArray:
 			return CapnBuilder.to_bytes(_b, packed)
 
-		func init_people(n: int) -> Array:
+		func init_people(n: int) -> Array[Person.Builder]:
 			var lb: CapnBuilder.ListBuilder = _b.init_composite_list(0, n, Person.DATA_WORDS, Person.PTR_WORDS)
-			var out: Array = []
+			var out: Array[Person.Builder] = []
 			out.resize(n)
 			for i: int in n:
 				out[i] = Person.Builder.wrap(lb.init_struct(i))

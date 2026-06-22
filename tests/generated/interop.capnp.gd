@@ -52,17 +52,17 @@ class Root extends RefCounted:
 		func get_name() -> String:
 			return _r.get_text(0, "")
 
-		func get_tags() -> Array:
+		func get_tags() -> Array[String]:
 			var lr: CapnReader.ListReader = _r.get_list(1)
-			var out: Array = []
+			var out: Array[String] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
 				out[i] = lr.get_text(i)
 			return out
 
-		func get_scores() -> Array:
+		func get_scores() -> Array[int]:
 			var lr: CapnReader.ListReader = _r.get_list(2)
-			var out: Array = []
+			var out: Array[int] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
 				out[i] = lr.get_i32(i)

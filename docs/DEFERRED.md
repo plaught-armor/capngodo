@@ -17,12 +17,13 @@ result on the tested paths — these are gaps, edges, and polish.
 | CG5 | ✅ | **Data field defaults** | Done. A `Data` field with `hadExplicitDefault` emits its authored bytes as an inline `PackedByteArray([...])` literal (constructor form — expression position has no annotation to coerce a bare `[...]`, and `const` Packed* is C1-broken); the getter passes it as the `get_data(off, default)` fallback. Interop cross-check: a capnp-encoded all-default message read through the generated reader yields the byte-exact authored default. Schema: `tests/golden/defaults.capnp` (`dataf`/`datas`/`emptyd`); test: `tests/integration/test_defaults.gd`. |
 | CG6 | P2 | **Interface field types** | AnyPointer fields now handled by CG1a (type-erased accessors). Interface/capability fields still emit no-op stubs (`null` getter, `pass` setter) — they decode to a table index at runtime but codegen has no accessor yet. |
 | CG7 | P3 | **Cross-file type references** | Multi-file schemas (`import`/`using`) — a field of an imported type isn't in the current file's `flat_by_id`; `_flat_of` returns "" → valid-but-`null`/`Variant` stub + `push_error`. Need a cross-file name map. |
+| CG8 | P3 | **`List(Void)` element** | `_emit_list_setter` falls a void element through to the primitive path emitting `_b.init_list(off, CapnPointer.ElemSize.POINTER, n)` — wrong elem size for a void list (capnp uses the empty/zero element size; a `List(Void)` carries only a length). Getter side maps to untyped `Array` of `null` (harmless). No schema exercises it today. |
 
 ## Codegen quality / typing
 
 | id | pri | item | notes |
 |---|---|---|---|
-| CQ1 | P2 | **Typed `Array[T]` list returns** | Generated list getters/setters use untyped `Array` (elements are `Variant`), so call sites lose autocomplete/typing (forces untyped test locals, H1). Emit `Array[X.Reader]` + `assign()` (C3). |
+| CQ1 | ✅ | **Typed `Array[T]` list returns** | Done. List getters return `Array[<Elem>]` (`Array[X.Reader]`, `Array[String]`, `Array[int]`, …) and composite-list setters return `Array[X.Builder]`; the container is born typed so indexed writes need no C3 `.assign()`. Erased/unresolved elements (AnyPointer, list-of-list, interface, void, cross-file struct) stay untyped `Array`. Enum elements map to `Array[int]` (CQ2 covers enum-typed). Typed-local guards in `tests/integration/test_codegen.gd`. |
 | CQ2 | P3 | **Enum-typed returns (D10a)** | Enum getters return `int`, not the generated enum type. Could emit `-> <Enum>` for autocomplete (still int underneath). |
 | CQ3 | P3 | **`_pascal` ALLCAPS / `_snake` acronym runs** | `_snake("HTTPServer")` → `httpserver` (not `http_server`); `_pascal` lowercases tails. Fine for capnp's lowerCamelCase convention, edge for ALLCAPS names. |
 | CQ4 | P3 | **`_scalar_set` TEXT/DATA computes unused `def`** | `_default_for` runs for text/data setters but the literal is unused (text/data don't XOR on write). Short-circuit. |

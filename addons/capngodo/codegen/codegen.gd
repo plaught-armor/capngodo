@@ -355,14 +355,31 @@ static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, 
 
 static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary) -> void:
 	var ew: CapnSchema.TypeWhich = CapnSchema.type_which(elem)
+	# Type the returned container by element kind for autocomplete at the call
+	# site. Indexed writes into a typed Array carry the element type directly —
+	# no C3 .assign() needed.
+	var arr: String = _list_container_type(ew, elem, flat_by_id)
 	lines.append("")
-	lines.append(TAB + TAB + "func get_%s() -> Array:" % fname)
+	lines.append(TAB + TAB + "func get_%s() -> %s:" % [fname, arr])
 	lines.append(TAB + TAB + TAB + "var lr: CapnReader.ListReader = _r.get_list(%d)" % off)
-	lines.append(TAB + TAB + TAB + "var out: Array = []")
+	lines.append(TAB + TAB + TAB + "var out: %s = []" % arr)
 	lines.append(TAB + TAB + TAB + "out.resize(lr.size())")
 	lines.append(TAB + TAB + TAB + "for i: int in lr.size():")
 	lines.append(TAB + TAB + TAB + TAB + "out[i] = %s" % _list_elem_expr(ew, elem, flat_by_id))
 	lines.append(TAB + TAB + TAB + "return out")
+
+
+## The typed container type for a list getter — "Array[<T>]", or plain "Array"
+## when the element type is erased/unresolved (AnyPointer, list-of-list,
+## interface, void, or a cross-file struct not yet in flat_by_id). Checks
+## _flat_of directly for structs rather than reading _return_type's sentinel.
+static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary) -> String:
+	if ew == CapnSchema.TypeWhich.ANY_POINTER or ew == CapnSchema.TypeWhich.LIST or ew == CapnSchema.TypeWhich.INTERFACE or ew == CapnSchema.TypeWhich.VOID:
+		return "Array"
+	if ew == CapnSchema.TypeWhich.STRUCT:
+		var flat: String = _flat_of(elem, flat_by_id)
+		return ("Array[%s.Reader]" % flat) if flat != "" else "Array"
+	return "Array[%s]" % _return_type(ew, elem, flat_by_id)
 
 
 # --- setters (Builder) ---------------------------------------------------
@@ -491,12 +508,13 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		if child == "":
 			lines.append(TAB + TAB + "# TODO(M6): init '%s' (unresolved cross-file struct list)" % fname)
 			return
-		# Composite list -> Array of element Builders.
-		lines.append(TAB + TAB + "func init_%s(n: int) -> Array:" % fname)
+		# Composite list -> typed Array of element Builders.
+		var arr: String = "Array[%s.Builder]" % child
+		lines.append(TAB + TAB + "func init_%s(n: int) -> %s:" % [fname, arr])
 		if disc_line != "":
 			lines.append(disc_line)
 		lines.append(TAB + TAB + TAB + "var lb: CapnBuilder.ListBuilder = _b.init_composite_list(%d, n, %s.DATA_WORDS, %s.PTR_WORDS)" % [off, child, child])
-		lines.append(TAB + TAB + TAB + "var out: Array = []")
+		lines.append(TAB + TAB + TAB + "var out: %s = []" % arr)
 		lines.append(TAB + TAB + TAB + "out.resize(n)")
 		lines.append(TAB + TAB + TAB + "for i: int in n:")
 		lines.append(TAB + TAB + TAB + TAB + "out[i] = %s.Builder.wrap(lb.init_struct(i))" % child)
