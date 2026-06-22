@@ -850,7 +850,9 @@ static func _data_literal(bytes: PackedByteArray) -> String:
 
 ## TypeWhich -> CapnPointer.ElemSize token for a non-composite list.
 static func _elem_size_token(ew: CapnSchema.TypeWhich) -> String:
-	if ew == CapnSchema.TypeWhich.BOOL:
+	if ew == CapnSchema.TypeWhich.VOID:
+		return "CapnPointer.ElemSize.VOID"  # List(Void): count only, zero width
+	elif ew == CapnSchema.TypeWhich.BOOL:
 		return "CapnPointer.ElemSize.BIT"
 	elif ew == CapnSchema.TypeWhich.INT8 or ew == CapnSchema.TypeWhich.UINT8:
 		return "CapnPointer.ElemSize.BYTE"
@@ -911,6 +913,8 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 
 
 static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
+	if ew == CapnSchema.TypeWhich.VOID:
+		return "null"  # List(Void) carries only a length; elements have no value
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _flat_of(elem, flat_by_id)
 		if flat == "":
