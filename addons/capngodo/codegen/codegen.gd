@@ -107,10 +107,13 @@ static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by
 	lines.append("## GENERATED from %s by capnpc-gdscript — do not edit." % fname)
 	lines.append("")
 
-	# Enums first (class-scoped), then struct inner classes.
+	# Enums first (class-scoped), then schema-level consts, then struct classes.
 	for entry: CodegenEntry in types:
 		if CapnSchema.node_which(entry.node) == CapnSchema.NodeWhich.ENUM:
 			_emit_enum(lines, entry)
+	for entry: CodegenEntry in types:
+		if CapnSchema.node_which(entry.node) == CapnSchema.NodeWhich.CONST:
+			_emit_const(lines, entry, flat_by_id)
 	for entry: CodegenEntry in types:
 		if CapnSchema.node_which(entry.node) == CapnSchema.NodeWhich.STRUCT:
 			_emit_struct(lines, entry, flat_by_id, by_id)
@@ -136,6 +139,83 @@ static func _emit_enum(lines: PackedStringArray, entry: CodegenEntry) -> void:
 		members.append(_safe_enum_member(_snake(CapnSchema.enumerant_name(enumerants.get_struct(i))).to_upper()))
 	lines.append("enum %s { %s }" % [entry.flat, ", ".join(members)])
 	lines.append("")
+
+
+## Emit a class-scoped GDScript const for a schema `const` node. Handles scalar
+## / bool / float / Text / enum values; Data (C1 — Packed* can't be const),
+## struct, list, and pointer consts emit a TODO (rare; would need a static var
+## or a value builder).
+static func _emit_const(lines: PackedStringArray, entry: CodegenEntry, flat_by_id: Dictionary[int, String]) -> void:
+	var t: CapnReader.StructReader = CapnSchema.const_type(entry.node)
+	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
+	var name: String = _safe_enum_member(_snake(entry.flat).to_upper())
+	var lit: String = _const_literal(CapnSchema.const_value(entry.node), tw)
+	if lit == "":
+		lines.append("# TODO: const '%s' of type %d (unsupported value kind)" % [name, tw])
+		lines.append("")
+		return
+	lines.append("const %s: %s = %s" % [name, _const_type_str(tw), lit])
+	lines.append("")
+
+
+## GDScript type for a const of TypeWhich `tw` (enum is int-typed at const
+## scope — int at the wire, no `as`-cast complications in a constant expr).
+static func _const_type_str(tw: CapnSchema.TypeWhich) -> String:
+	if tw == CapnSchema.TypeWhich.BOOL:
+		return "bool"
+	elif tw == CapnSchema.TypeWhich.FLOAT32 or tw == CapnSchema.TypeWhich.FLOAT64:
+		return "float"
+	elif tw == CapnSchema.TypeWhich.TEXT:
+		return "String"
+	return "int"
+
+
+## The GDScript literal for a const Value (the actual value — unlike a field
+## default, no XOR/bit-pattern form). "" for kinds we don't emit.
+static func _const_literal(v: CapnReader.StructReader, tw: CapnSchema.TypeWhich) -> String:
+	if tw == CapnSchema.TypeWhich.BOOL:
+		return "true" if CapnSchema.value_bool(v) else "false"
+	elif tw == CapnSchema.TypeWhich.INT8:
+		return str(CapnSchema.value_i8(v))
+	elif tw == CapnSchema.TypeWhich.INT16:
+		return str(CapnSchema.value_i16(v))
+	elif tw == CapnSchema.TypeWhich.INT32:
+		return str(CapnSchema.value_i32(v))
+	elif tw == CapnSchema.TypeWhich.INT64:
+		return str(CapnSchema.value_i64(v))
+	elif tw == CapnSchema.TypeWhich.UINT8:
+		return str(CapnSchema.value_u8(v))
+	elif tw == CapnSchema.TypeWhich.UINT16:
+		return str(CapnSchema.value_u16(v))
+	elif tw == CapnSchema.TypeWhich.UINT32:
+		return str(CapnSchema.value_u32(v))
+	elif tw == CapnSchema.TypeWhich.UINT64:
+		return str(CapnSchema.value_u64(v))
+	elif tw == CapnSchema.TypeWhich.ENUM:
+		# UInt64 > 2^63-1 reads back negative (Godot int is signed, no unsigned
+		# 64-bit Variant) — a wire-wide limitation, not specific to consts.
+		return str(CapnSchema.value_enum(v))
+	elif tw == CapnSchema.TypeWhich.FLOAT32:
+		return _float_literal(CapnSchema.value_f32(v), false)
+	elif tw == CapnSchema.TypeWhich.FLOAT64:
+		return _float_literal(CapnSchema.value_f64(v), true)
+	elif tw == CapnSchema.TypeWhich.TEXT:
+		return _gd_string(CapnSchema.value_text(v))
+	return ""
+
+
+## A valid GDScript float literal. str() emits the bare value but renders the
+## non-finite values as "inf"/"nan" — not parseable identifiers — so map those
+## to INF / -INF / NAN. Caveat: str() gives ~14 significant digits, so a
+## math-derived Float64 const can differ from the schema at the ULP level
+## (acceptable for the typical designer-tuned constant; `is_f64` is reserved for
+## a future higher-precision path). GDScript's % formatter has no %g.
+static func _float_literal(x: float, _is_f64: bool) -> String:
+	if is_nan(x):
+		return "NAN"
+	if is_inf(x):
+		return "INF" if x > 0.0 else "-INF"
+	return str(x)
 
 
 static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader]) -> void:
