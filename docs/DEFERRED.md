@@ -31,7 +31,7 @@ result on the tested paths — these are gaps, edges, and polish.
 | CQ4 | P3 | **`_scalar_set` TEXT/DATA computes unused `def`** | `_default_for` runs for text/data setters but the literal is unused (text/data don't XOR on write). Short-circuit. |
 | CQ5 | ✅ | **Typed containers (H10b)** | Done. `by_id` → `Dictionary[int, CapnReader.StructReader]`, `flat_by_id` → `Dictionary[int, String]`, `used` → `Dictionary[String, bool]`, `_collect`/`_walk` → `Array[CodegenEntry]`; `_index_nodes` return + the threaded locals typed. Pure annotations — all goldens byte-identical. |
 | CQ6 | ✅ | **Struct-level union tested** | Done. `tests/golden/nested_union.capnp` `Msg` carries a struct-level (anonymous) union (`none` / `payload` / `count`); `tests/integration/test_nested_union.gd` exercises `which()` + `is_*` + the outer-discriminant write (landed with CG4). |
-| CQ7 | P3 | **Golden compile-check warning** | `test_generated_sources_compile` reload()s a source whose `class_name` is already registered → benign `"hides a global script class"` log. Strip `class_name` before the isolated compile, or accept the noise. |
+| CQ7 | ✅ | **Golden compile-check warning** | Done. `test_generated_sources_compile` strips the leading `class_name X ` (via `_strip_class_name`) before the isolated `reload()`, so the umbrella global being already registered no longer logs `"hides a global script class"`. Test-only; codegen unchanged. |
 
 ## Runtime perf (measure-first — DOD inline checklist)
 

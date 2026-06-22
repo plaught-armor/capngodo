@@ -141,9 +141,24 @@ func test_generated_sources_compile() -> void:
 	var files: Dictionary = CapnCodegen.generate_files(cgr)
 	for fname: String in files:
 		var script: GDScript = GDScript.new()
-		script.source_code = files[fname]
+		# Drop the `class_name X ` prefix: the umbrella global is already
+		# registered (the committed file is a project resource), so an isolated
+		# reload() would log a benign "hides a global script class" warning (CQ7).
+		script.source_code = _strip_class_name(files[fname])
 		var err: int = script.reload()
 		assert_true(err == OK or err == ERR_PARSE_ERROR, "%s parses (err=%d)" % [fname, err])
+
+
+## Replace a leading `class_name Foo extends Bar` with just `extends Bar`.
+func _strip_class_name(src: String) -> String:
+	var nl: int = src.find("\n")
+	var first: String = src.substr(0, nl) if nl != -1 else src
+	if not first.begins_with("class_name "):
+		return src
+	var ext: int = first.find("extends ")
+	if ext == -1:
+		return src
+	return first.substr(ext) + (src.substr(nl) if nl != -1 else "")
 
 
 func test_typed_list_returns_assign_to_typed_locals() -> void:
