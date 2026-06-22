@@ -85,6 +85,27 @@ const GROUP_OFF_TYPE_ID: int = 16          # u64
 const TYPE_OFF_WHICH: int = 0              # u16
 const TYPE_OFF_TYPE_ID: int = 8            # u64 (enum/struct/interface variants)
 const TYPE_LIST_PTR_ELEMENT: int = 0       # Type.list.elementType
+const TYPE_PTR_BRAND: int = 0              # Type.{struct,enum,interface}.brand (ptr 0)
+# Type.anyPointer sub-union (gate on type_which() == ANY_POINTER first).
+const ANYPTR_OFF_WHICH: int = 8           # u16 — Type.anyPointer.which()
+const ANYPTR_PARAM_OFF_SCOPE: int = 16    # u64 — anyPointer.parameter.scopeId
+const ANYPTR_PARAM_OFF_INDEX: int = 10    # u16 — anyPointer.parameter.parameterIndex
+
+# Type.anyPointer.which() — byte 8 (u16).
+enum AnyPtrWhich { UNCONSTRAINED, PARAMETER, IMPLICIT_METHOD_PARAMETER }
+
+# --- Brand (generic parameter bindings) ---
+const BRAND_PTR_SCOPES: int = 0           # List(Brand.Scope)
+const SCOPE_OFF_ID: int = 0               # u64 — Brand.Scope.scopeId
+const SCOPE_OFF_WHICH: int = 8            # u16 — Brand.Scope.which()
+const SCOPE_PTR_BIND: int = 0             # List(Brand.Binding)
+const BINDING_OFF_WHICH: int = 0          # u16 — Brand.Binding.which()
+const BINDING_PTR_TYPE: int = 0           # Brand.Binding.type (a Type)
+
+# Brand.Scope.which() — byte 8 (u16).
+enum BrandScopeWhich { BIND, INHERIT }
+# Brand.Binding.which() — byte 0 (u16).
+enum BindingWhich { UNBOUND, TYPE }
 
 # --- Value (union; gate reads on value_which) ---
 const VALUE_OFF_WHICH: int = 0             # u16
@@ -270,6 +291,56 @@ static func type_id(t: CapnReader.StructReader) -> int:
 ## type_which() == LIST before calling.
 static func type_list_element(t: CapnReader.StructReader) -> CapnReader.StructReader:
 	return t.get_struct(TYPE_LIST_PTR_ELEMENT)
+
+
+## The generic Brand on a STRUCT/ENUM/INTERFACE type (parameter bindings).
+## Shares ptr 0 with Type.list.elementType — gate on type_which() first.
+static func type_brand(t: CapnReader.StructReader) -> CapnReader.StructReader:
+	return t.get_struct(TYPE_PTR_BRAND)
+
+
+## Type.anyPointer sub-discriminant — gate on type_which() == ANY_POINTER.
+static func type_anyptr_which(t: CapnReader.StructReader) -> AnyPtrWhich:
+	return t.get_u16(ANYPTR_OFF_WHICH, 0) as AnyPtrWhich
+
+
+## anyPointer.parameter.scopeId — the generic type whose parameter is referenced.
+## Gate on type_anyptr_which() == PARAMETER.
+static func anyptr_param_scope_id(t: CapnReader.StructReader) -> int:
+	return t.get_u64(ANYPTR_PARAM_OFF_SCOPE, 0)
+
+
+## anyPointer.parameter.parameterIndex — index within that type's param list.
+static func anyptr_param_index(t: CapnReader.StructReader) -> int:
+	return t.get_u16(ANYPTR_PARAM_OFF_INDEX, 0)
+
+
+# --- Brand -------------------------------------------------------------
+
+static func brand_scopes(b: CapnReader.StructReader) -> CapnReader.ListReader:
+	return b.get_list(BRAND_PTR_SCOPES)
+
+
+static func scope_id(s: CapnReader.StructReader) -> int:
+	return s.get_u64(SCOPE_OFF_ID, 0)
+
+
+static func scope_which(s: CapnReader.StructReader) -> BrandScopeWhich:
+	return s.get_u16(SCOPE_OFF_WHICH, 0) as BrandScopeWhich
+
+
+## List(Brand.Binding) — gate on scope_which() == BIND.
+static func scope_bind(s: CapnReader.StructReader) -> CapnReader.ListReader:
+	return s.get_list(SCOPE_PTR_BIND)
+
+
+static func binding_which(b: CapnReader.StructReader) -> BindingWhich:
+	return b.get_u16(BINDING_OFF_WHICH, 0) as BindingWhich
+
+
+## The bound Type — gate on binding_which() == TYPE.
+static func binding_type(b: CapnReader.StructReader) -> CapnReader.StructReader:
+	return b.get_struct(BINDING_PTR_TYPE)
 
 
 # --- Enumerant ---------------------------------------------------------
