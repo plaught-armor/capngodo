@@ -627,10 +627,14 @@ static func _safe_enum_member(upper: String) -> String:
 
 
 static func _pascal(snake: String) -> String:
+	# Upper-case the first letter of each "_"-part, preserving the rest as-is
+	# (no Godot capitalize() — it re-splits camelCase and lowercases tails).
 	var parts: PackedStringArray = snake.split("_", false)
 	var out: String = ""
 	for p: String in parts:
-		out += p.capitalize() if p.length() > 1 else p.to_upper()
+		if p.is_empty():
+			continue
+		out += p.substr(0, 1).to_upper() + p.substr(1)
 	return out
 
 
@@ -893,22 +897,33 @@ static func _umbrella_class(fname: String) -> String:
 	return out + "Capnp"
 
 
-## camelCase / PascalCase -> snake_case. Inserts a separator only on a
-## lower->upper boundary (so "phoneNumber" -> "phone_number", "selfEmployed" ->
-## "self_employed"); runs of capitals stay joined rather than exploding into
-## single letters. Leading underscores are stripped (they'd shadow GDScript's
-## private convention in the get_ method name).
+## camelCase / PascalCase -> snake_case. Splits on a lower->upper boundary
+## ("phoneNumber" -> "phone_number") AND at the end of a capital run that starts
+## a new word ("HTTPServer" -> "http_server", "parseHTTPRequest" ->
+## "parse_http_request") — so acronym runs don't collapse into one token.
+## Like Python's inflection.underscore, the last capital of a run starts the new
+## word ("APIv2" -> "ap_iv2") — not a bug: capnp identifiers are camelCase, so a
+## lowercase word always begins with its own Pascal-cased capital. capnp names
+## can't contain "_", so the leading-strip is just defensive.
 static func _snake(s: String) -> String:
 	var out: String = ""
-	var prev_lower: bool = false
-	for i: int in s.length():
+	var n: int = s.length()
+	for i: int in n:
 		var ch: String = s[i]
-		var lower: String = ch.to_lower()
-		var is_upper: bool = ch != lower
-		if is_upper and prev_lower:
-			out += "_"
-		out += lower
-		prev_lower = (not is_upper) and ch != "_"
+		var low: String = ch.to_lower()
+		var is_upper: bool = ch != low
+		if is_upper and i > 0 and not out.ends_with("_"):
+			var prev_upper: bool = s[i - 1] != s[i - 1].to_lower()
+			var next_lower: bool = i + 1 < n and _is_lower_letter(s[i + 1])
+			# lower/digit -> Upper, or acronym-end (Upper run -> lowercase word).
+			if not prev_upper or next_lower:
+				out += "_"
+		out += low
 	while out.begins_with("_"):
 		out = out.substr(1)
 	return out
+
+
+## True if `ch` is a lowercase cased letter (not a digit or symbol).
+static func _is_lower_letter(ch: String) -> bool:
+	return ch == ch.to_lower() and ch != ch.to_upper()

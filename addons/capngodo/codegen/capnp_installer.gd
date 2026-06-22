@@ -69,6 +69,9 @@ func _on_request_completed(result: int, code: int, _headers: PackedStringArray, 
 	if result != HTTPRequest.RESULT_SUCCESS:
 		_fail("network error %d from %s (timeout / no connection)" % [result, what])
 		return
+	if code == 404 and _stage == Stage.FETCHING_RELEASE:
+		_fail("no capnp release published yet — Browse to an existing binary or build from source")
+		return
 	if code != 200:
 		_fail("HTTP %d from %s" % [code, what])
 		return
