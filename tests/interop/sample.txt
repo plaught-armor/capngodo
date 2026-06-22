@@ -1,0 +1,7 @@
+( id = 123456,
+  name = "Alice",
+  tags = ["alpha", "bravo", "charlie"],
+  scores = [10, -20, 30],
+  child = (note = "child note"),
+  kind = beta,
+  status = (banned = "spam") )

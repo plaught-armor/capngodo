@@ -389,8 +389,19 @@ godot.exe --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginc
 ```
 
 Runs the full GUT suite headless. Integration tests decode the real Cap'n Proto
-`testdata/` fixtures and round-trip the generated readers/builders, cross-checked
-against `capnp` itself.
+`testdata/` fixtures and round-trip the generated readers/builders.
+
+For **bidirectional interop** against the reference implementation (the method
+[recommended by Cap'n Proto](https://capnproto.org/otherlang.html) — `capnp`
+encode/decode), run:
+
+```sh
+CAPNGODO_GODOT=/path/to/godot CAPNP=/path/to/capnp tools/run_interop.sh
+```
+
+It builds a message with capngodo and checks `capnp decode` reads it, then has
+`capnp encode` produce a message and checks capngodo reads it back. Both the GUT
+suite and the interop test run on every push via GitHub Actions.
 
 ## Project layout
 

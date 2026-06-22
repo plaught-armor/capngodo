@@ -5,14 +5,17 @@ on:
   pull_request:
 
 jobs:
-  gut:
+  test:
     runs-on: ubuntu-latest
     env:
-      # Godot 4.4+ is required (typed Dictionary). Bump as needed; the project
-      # targets 4.6+. No capnp needed — tests use committed fixtures.
+      # Godot 4.4+ required (typed Dictionary); project targets 4.6+. The GUT
+      # suite needs no capnp (committed fixtures); the interop job does.
       GODOT_VERSION: 4.4.1-stable
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install capnp
+        run: sudo apt-get update && sudo apt-get install -y capnproto
 
       - name: Download Godot (headless)
         run: |
@@ -24,5 +27,8 @@ jobs:
           chmod +x godot
           ./godot --version
 
-      - name: Run GUT suite
+      - name: GUT suite
         run: CAPNGODO_GODOT="$PWD/godot" sh tools/run_tests.sh
+
+      - name: Interop with reference capnp
+        run: CAPNGODO_GODOT="$PWD/godot" CAPNP=capnp sh tools/run_interop.sh
