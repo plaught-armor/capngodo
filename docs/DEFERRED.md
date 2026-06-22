@@ -46,7 +46,7 @@ result on the tested paths — these are gaps, edges, and polish.
 | PK1 | ✅ | **`tools/build_capnp.sh`** | Done. Builds `capnp` from a checkout (cmake/ninja, no sudo); prints the binary path. |
 | PK2 | ✅ | **README** | Done. Install, the `capnp compile -o gdscript` workflow, env vars, runtime-codec usage. Workflow verified verbatim. |
 | PK3 | ✅ | **GUT CI script** | Done — `tools/run_tests.sh` (import + GUT headless, propagates exit code). |
-| PK4 | P3 | **Editor plugin panel** | `plugin.gd` is a stub; optional in-editor "compile .capnp" UI (like godobuf). |
+| PK4 | ✅ | **Editor plugin panel** | Done. `plugin.gd` is a dock: capnp status, one-click Install (downloads the platform binary from our GitHub releases via `CapnInstaller`), Browse-to-existing, and a schema→out-dir Generate that runs `capnp compile -o-` + `CapnCodegen` in-process (`CapnTool`, no CLI/PATH/env). CI (`capnp-release.yml`) builds capnp for linux/macOS/windows on release. The published addon ships no binary (Asset-Store-clean). Network/CI paths are manual-verify; the in-process generate + extraction are tested. |
 | PK5 | ✅ | **Repo folder rename** | Done — repo is `capngodo`. |
 | PK6 | P2 | **Verify Windows codegen on real Windows** | `tools/capnpc-gdscript.cmd` + the shimless 2-step are documented but UNTESTED on a real Windows host (developed on Linux). The plugin itself (`plugin_main.gd`) is cross-platform. Open Q: does capnp spawn a `.cmd` plugin via `-o gdscript` on Windows? If not, the shimless 2-step is the fallback. |
 

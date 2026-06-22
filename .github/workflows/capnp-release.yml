@@ -1,0 +1,99 @@
+name: capnp-release
+
+# Build the Cap'n Proto compiler for linux / macOS / windows and attach the
+# zipped binaries to a capngodo GitHub release. The in-editor installer
+# (addons/capngodo/codegen/capnp_installer.gd) downloads the asset matching the
+# user's platform, so users never build or hunt for capnp themselves.
+#
+# Asset names (matched verbatim by the installer):
+#   capnp-linux-x86_64.zip   -> capnp
+#   capnp-macos-universal.zip -> capnp   (x86_64 + arm64 fat binary)
+#   capnp-windows-x86_64.zip -> capnp.exe
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach the binaries to"
+        required: true
+
+env:
+  # Pinned Cap'n Proto release; bump deliberately (the wire format and the CGR
+  # schema both track this).
+  CAPNP_VERSION: "1.1.0"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: capnp-linux-x86_64.zip
+          - os: macos-latest
+            asset: capnp-macos-universal.zip
+          - os: windows-latest
+            asset: capnp-windows-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Cap'n Proto
+        uses: actions/checkout@v4
+        with:
+          repository: capnproto/capnproto
+          ref: v${{ env.CAPNP_VERSION }}
+
+      - name: Install build tools (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake ninja-build zip
+
+      - name: Install build tools (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja
+
+      - name: Build capnp (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eu
+          args=(-S c++ -B build -GNinja -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release)
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            # Static-link the C++ runtime so the downloaded binary runs across
+            # distros without a matching libstdc++. (One arg — the space-bearing
+            # value must stay a single array element.)
+            args+=("-DCMAKE_EXE_LINKER_FLAGS=-static-libgcc -static-libstdc++")
+          fi
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            args+=("-DCMAKE_OSX_ARCHITECTURES=x86_64;arm64")
+          fi
+          cmake "${args[@]}"
+          cmake --build build --target capnp_tool
+          ./build/src/capnp/capnp --version
+
+      - name: Build capnp (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cmake -S c++ -B build -DBUILD_TESTING=OFF
+          cmake --build build --config Release --target capnp_tool
+          .\build\src\capnp\Release\capnp.exe --version
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: zip -j "${{ matrix.asset }}" build/src/capnp/capnp
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path build\src\capnp\Release\capnp.exe -DestinationPath ${{ matrix.asset }}
+
+      - name: Attach to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.event.release.tag_name }}
+          files: ${{ matrix.asset }}
