@@ -30,12 +30,16 @@ stated expectations: we did **not** write our own schema parser (we use the
 `capnp` compiler + a `capnpc-gdscript` plugin, exactly as recommended), and we
 **test via `capnp` encode/decode** interop.
 
-## 2. Announce on the mailing list
+## 2. Announce on GitHub Discussions
 
-The page asks contributors to e-mail
-[the group](https://groups.google.com/group/capnproto) first. Draft:
+The Cap'n Proto mailing list **has moved to GitHub Discussions** (pinned notice
+on the repo), so that's the live community hub. Post in the **🙌 Show and tell**
+category at
+[capnproto/capnproto/discussions](https://github.com/capnproto/capnproto/discussions)
+(the legacy [Google Group](https://groups.google.com/group/capnproto) still
+exists but is deprecated). Draft:
 
-> **Subject:** capngodo — Cap'n Proto serialization + codegen for Godot/GDScript
+> **Title:** capngodo — Cap'n Proto serialization + codegen for Godot/GDScript
 >
 > Hi all,
 >
@@ -44,9 +48,9 @@ The page asks contributors to e-mail
 >
 > It's serialization-only (no RPC). Per the otherlang guidance it does NOT
 > implement its own schema parser — it ships a `capnpc-gdscript` compiler plugin
-> driven by `capnp compile`, and a standalone runtime wire codec. The full wire
+> driven by `capnp compile`, plus a standalone runtime wire codec. The full wire
 > format is covered (structs, all list types, packed, multi-segment + far
-> pointers, default-XOR), plus codegen for structs/enums/unions/groups/defaults.
+> pointers, default-XOR), with codegen for structs/enums/unions/groups/defaults.
 >
 > It's verified bidirectionally against the reference implementation: generated
 > readers decode real `capnp`-encoded messages, and generated builders produce
@@ -54,9 +58,7 @@ The page asks contributors to e-mail
 > fixtures + interop.
 >
 > I'd like to add it under "Serialization only" on the Other Languages page
-> (PR incoming). Feedback welcome.
->
-> Thanks!
+> (PR incoming). Feedback welcome — thanks!
 
 ## 3. Godot Asset Library
 
