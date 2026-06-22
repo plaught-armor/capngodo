@@ -36,6 +36,12 @@ static func generate_files(cgr: CapnReader.StructReader) -> Dictionary[String, S
 	var nodes_by_id: Dictionary[int, CapnReader.StructReader] = _index_nodes(cgr)
 	var out: Dictionary[String, String] = {}
 	var reqs: CapnReader.ListReader = CapnSchema.cgr_requested_files(cgr)
+	# The set of files we actually emit. Only these are cross-file-referenceable
+	# (CG7): an imported type from a file we DON'T generate has no umbrella class
+	# to point at, so it stays unresolved rather than referencing a phantom class.
+	var requested_ids: Dictionary[int, bool] = {}
+	for i: int in reqs.size():
+		requested_ids[CapnSchema.req_file_id(reqs.get_struct(i))] = true
 	for i: int in reqs.size():
 		var rf: CapnReader.StructReader = reqs.get_struct(i)
 		var fname: String = CapnSchema.req_file_name(rf)
@@ -43,7 +49,7 @@ static func generate_files(cgr: CapnReader.StructReader) -> Dictionary[String, S
 		if file_node == null:
 			push_error("[CapnCodegen] requested file node %d not found" % CapnSchema.req_file_id(rf))
 			continue
-		out[fname + ".gd"] = _emit_umbrella(fname, file_node, nodes_by_id)
+		out[fname + ".gd"] = _emit_umbrella(fname, file_node, nodes_by_id, requested_ids)
 	return out
 
 
@@ -96,11 +102,38 @@ static func _uniquify(flat: String, used: Dictionary[String, bool]) -> String:
 	return "%s_%d" % [flat, n]
 
 
+## Qualify cross-file type names into flat_by_id: for every OTHER file in the
+## request, run the same flatten pass and record its node ids as
+## "<OtherUmbrella>.<flat>" — so a field of an imported type resolves to that
+## file's generated umbrella class. Local names already in flat_by_id win. Only
+## requested files are qualified: an imported type from a file we don't generate
+## has no umbrella to point at, so it stays unresolved (and `capnp`'s built-in
+## c++.capnp annotations — never requested — are skipped, avoiding a bogus
+## "C++Capnp" reference). Request all your files together: `capnp compile a b`.
+static func _add_cross_file_names(current_file_id: int, by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], requested_ids: Dictionary[int, bool]) -> void:
+	for fid: int in requested_ids:
+		if fid == current_file_id:
+			continue
+		var fnode: CapnReader.StructReader = by_id.get(fid)
+		if fnode == null:
+			continue
+		var other: Dictionary[int, String] = {}
+		_collect(fnode, by_id, other)
+		var umbrella: String = _umbrella_class(CapnSchema.node_display_name(fnode))
+		for id: int in other:
+			if not flat_by_id.has(id):
+				flat_by_id[id] = "%s.%s" % [umbrella, other[id]]
+
+
 # --- emission ------------------------------------------------------------
 
-static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by_id: Dictionary[int, CapnReader.StructReader]) -> String:
+static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by_id: Dictionary[int, CapnReader.StructReader], requested_ids: Dictionary[int, bool]) -> String:
 	var flat_by_id: Dictionary[int, String] = {}
 	var types: Array[CodegenEntry] = _collect(file_node, by_id, flat_by_id)
+	# Cross-file refs (CG7): a field of an imported type resolves to that file's
+	# umbrella class. Local names (already in flat_by_id) win; everything else
+	# from the other requested files becomes a qualified "Umbrella.Flat".
+	_add_cross_file_names(CapnSchema.node_id(file_node), by_id, flat_by_id, requested_ids)
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("class_name %s extends RefCounted" % _umbrella_class(fname))
 	lines.append("")
