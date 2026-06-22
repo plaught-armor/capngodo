@@ -1,0 +1,16 @@
+; Engine configuration file.
+; capngodo — Cap'n Proto serializer/deserializer + codegen for GDScript.
+; Minimum Godot 4.6.
+
+config_version=5
+
+[application]
+
+config/name="capngodo"
+config/description="Cap'n Proto serializer/deserializer + schema codegen for GDScript."
+config/features=PackedStringArray("4.6")
+run/main_scene=""
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/capngodo/plugin.cfg")

@@ -1,2 +1,13 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Cap'n Proto binary wire fixtures must stay byte-exact.
+tests/fixtures/testdata/binary           -text
+tests/fixtures/testdata/flat             -text
+tests/fixtures/testdata/packed           -text
+tests/fixtures/testdata/packedflat       -text
+tests/fixtures/testdata/segmented        -text
+tests/fixtures/testdata/segmented-packed -text
+tests/fixtures/schema.capnp.bin          -text
+tests/fixtures/*.cgr.bin                  -text
+tests/fixtures/*_msg.bin                  -text

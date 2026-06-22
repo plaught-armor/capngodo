@@ -1,0 +1,66 @@
+[gd_scene format=3 uid="uid://4jb53yqktyfg"]
+
+[ext_resource type="Script" uid="uid://b8csyj66jclox" path="res://addons/gut/gui/GutControl.gd" id="1_eprql"]
+
+[node name="GutControl" type="Control" unique_id=1018554136]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 295.0
+offset_bottom = 419.0
+script = ExtResource("1_eprql")
+
+[node name="Bg" type="ColorRect" parent="." unique_id=1612565614]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.36, 0.36, 0.36, 1)
+
+[node name="VBox" type="VBoxContainer" parent="." unique_id=1134321081]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Tabs" type="TabContainer" parent="VBox" unique_id=300532864]
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="Tests" type="Tree" parent="VBox/Tabs" unique_id=1499928314]
+layout_mode = 2
+size_flags_vertical = 3
+hide_root = true
+metadata/_tab_index = 0
+
+[node name="SettingsScroll" type="ScrollContainer" parent="VBox/Tabs" unique_id=1010897064]
+visible = false
+layout_mode = 2
+size_flags_vertical = 3
+metadata/_tab_index = 1
+
+[node name="Settings" type="VBoxContainer" parent="VBox/Tabs/SettingsScroll" unique_id=1482081319]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="Buttons" type="HBoxContainer" parent="VBox" unique_id=433663913]
+layout_mode = 2
+
+[node name="RunTests" type="Button" parent="VBox/Buttons" unique_id=1730521870]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Run All"
+
+[node name="RunSelected" type="Button" parent="VBox/Buttons" unique_id=427294493]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Run Selected"
+
+[connection signal="item_activated" from="VBox/Tabs/Tests" to="." method="_on_tests_item_activated"]
+[connection signal="pressed" from="VBox/Buttons/RunTests" to="." method="_on_run_tests_pressed"]
+[connection signal="pressed" from="VBox/Buttons/RunSelected" to="." method="_on_run_selected_pressed"]

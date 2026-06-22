@@ -1,0 +1,37 @@
+#!/usr/bin/env sh
+# capnpc-gdscript — Cap'n Proto compiler plugin that emits GDScript readers.
+#
+# capnp invokes this with the CodeGeneratorRequest on stdin and its CWD set to
+# the output directory. We capture that CWD (Godot's --path would mask it) and
+# pass it to the headless plugin script, then forward stdin unchanged.
+#
+# Configure via environment:
+#   CAPNGODO_GODOT    path to the Godot 4.6+ binary  (required)
+#   CAPNGODO_PROJECT  path to the capngodo project   (required)
+#
+# Usage:
+#   export CAPNGODO_GODOT=/path/to/godot
+#   export CAPNGODO_PROJECT=/path/to/capngodo
+#   PATH="$CAPNGODO_PROJECT/tools:$PATH"
+#   capnp compile -ogdscript myschema.capnp
+
+set -eu
+
+: "${CAPNGODO_GODOT:?set CAPNGODO_GODOT to your Godot binary}"
+: "${CAPNGODO_PROJECT:?set CAPNGODO_PROJECT to the capngodo project dir}"
+
+OUT_DIR="$(pwd)"
+
+# Godot's FileAccess cannot open /dev/stdin, so spool the CodeGeneratorRequest
+# to a tempfile and pass its path to the plugin.
+REQ_FILE="$(mktemp "${TMPDIR:-/tmp}/capnpc-gdscript.XXXXXX")"
+trap 'rm -f "$REQ_FILE"' EXIT
+cat > "$REQ_FILE"
+
+# Redirect Godot's stdout to stderr: the plugin's only stdout-bound output is
+# the generated files (written directly to disk), so nothing should reach the
+# terminal's stdout where it could corrupt a downstream pipe.
+"$CAPNGODO_GODOT" --headless --quiet \
+	--path "$CAPNGODO_PROJECT" \
+	--script "res://addons/capngodo/codegen/plugin_main.gd" \
+	-- "$OUT_DIR" "$REQ_FILE" 1>&2
