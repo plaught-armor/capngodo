@@ -157,6 +157,10 @@ func test_typed_list_returns_assign_to_typed_locals() -> void:
 	assert_eq(people[0].get_name(), "Alice", "typed element keeps its API")
 	var phones: Array[AddressbookCapnp.Person_PhoneNumber.Reader] = people[0].get_phones()
 	assert_eq(phones.size(), 1, "one phone")
+	# CQ2: the enum getter returns the generated enum type, so it assigns to an
+	# enum-typed local (int underneath).
+	var ptype: AddressbookCapnp.Person_PhoneNumber_Type = phones[0].get_type()
+	assert_eq(ptype, AddressbookCapnp.Person_PhoneNumber_Type.MOBILE, "enum-typed getter")
 
 	var b: AddressbookCapnp.AddressBook.Builder = AddressbookCapnp.new_address_book()
 	var bpeople: Array[AddressbookCapnp.Person.Builder] = b.init_people(1)

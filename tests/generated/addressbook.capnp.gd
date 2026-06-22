@@ -112,8 +112,8 @@ class Person_PhoneNumber extends RefCounted:
 		func get_number() -> String:
 			return _r.get_text(0, "")
 
-		func get_type() -> int:
-			return _r.get_u16(0, 0)
+		func get_type() -> Person_PhoneNumber_Type:
+			return _r.get_u16(0, 0) as Person_PhoneNumber_Type
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -129,7 +129,7 @@ class Person_PhoneNumber extends RefCounted:
 		func set_number(value: String) -> void:
 			_b.set_text(0, value)
 
-		func set_type(value: int) -> void:
+		func set_type(value: Person_PhoneNumber_Type) -> void:
 			_b.set_u16(0, value, 0)
 
 class AddressBook extends RefCounted:

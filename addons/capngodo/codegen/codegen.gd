@@ -794,7 +794,10 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 	elif tw == CapnSchema.TypeWhich.FLOAT64:
 		return "%s.get_f64(%d, %s)" % [recv, off * 8, def]
 	elif tw == CapnSchema.TypeWhich.ENUM:
-		return "%s.get_u16(%d, %s)" % [recv, off * 2, def]
+		var eflat: String = _flat_of(t, flat_by_id)
+		if eflat == "":
+			return "%s.get_u16(%d, %s)" % [recv, off * 2, def]
+		return "%s.get_u16(%d, %s) as %s" % [recv, off * 2, def, eflat]
 	elif tw == CapnSchema.TypeWhich.TEXT:
 		return "%s.get_text(%d, %s)" % [recv, off, def]
 	elif tw == CapnSchema.TypeWhich.DATA:
@@ -829,8 +832,12 @@ static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructRea
 		return "lr.get_i64(i)"
 	elif ew == CapnSchema.TypeWhich.UINT8:
 		return "lr.get_u8(i)"
-	elif ew == CapnSchema.TypeWhich.UINT16 or ew == CapnSchema.TypeWhich.ENUM:
+	elif ew == CapnSchema.TypeWhich.UINT16:
 		return "lr.get_u16(i)"
+	elif ew == CapnSchema.TypeWhich.ENUM:
+		# Match the Array[<Enum>] container type emitted by _list_container_type.
+		var eflat: String = _flat_of(elem, flat_by_id)
+		return ("lr.get_u16(i) as %s" % eflat) if eflat != "" else "lr.get_u16(i)"
 	elif ew == CapnSchema.TypeWhich.UINT32:
 		return "lr.get_u32(i)"
 	elif ew == CapnSchema.TypeWhich.UINT64:
@@ -854,7 +861,12 @@ static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, f
 	elif tw == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _flat_of(t, flat_by_id)
 		return ("%s.Reader" % flat) if flat != "" else "Variant"
-	# int8..uint64, enum -> int
+	elif tw == CapnSchema.TypeWhich.ENUM:
+		# Enum at the API boundary (D10a): return the generated enum type for
+		# autocomplete; int underneath. Cross-file enum (unresolved) -> int.
+		var flat: String = _flat_of(t, flat_by_id)
+		return flat if flat != "" else "int"
+	# int8..uint64 -> int
 	return "int"
 
 

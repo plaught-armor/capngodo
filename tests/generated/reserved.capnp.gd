@@ -24,14 +24,14 @@ class Node_ extends RefCounted:
 		func get_class_() -> String:
 			return _r.get_text(0, "")
 
-		func get_color() -> int:
-			return _r.get_u16(4, 0)
+		func get_color() -> Color_:
+			return _r.get_u16(4, 0) as Color_
 
 		func get_instance_id_() -> int:
 			return _r.get_i32(8, 0)
 
-		func get_kind() -> int:
-			return _r.get_u16(6, 0)
+		func get_kind() -> Math:
+			return _r.get_u16(6, 0) as Math
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -50,13 +50,13 @@ class Node_ extends RefCounted:
 		func set_class_(value: String) -> void:
 			_b.set_text(0, value)
 
-		func set_color(value: int) -> void:
+		func set_color(value: Color_) -> void:
 			_b.set_u16(4, value, 0)
 
 		func set_instance_id_(value: int) -> void:
 			_b.set_i32(8, value, 0)
 
-		func set_kind(value: int) -> void:
+		func set_kind(value: Math) -> void:
 			_b.set_u16(6, value, 0)
 
 class Holder extends RefCounted:

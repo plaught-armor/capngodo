@@ -71,8 +71,8 @@ class Root extends RefCounted:
 		func get_child() -> Child.Reader:
 			return Child.Reader.wrap(_r.get_struct(3))
 
-		func get_kind() -> int:
-			return _r.get_u16(4, 0)
+		func get_kind() -> Kind:
+			return _r.get_u16(4, 0) as Kind
 
 		func status_which() -> int:
 			return _r.get_u16(6, 0)
@@ -112,7 +112,7 @@ class Root extends RefCounted:
 		func init_child() -> Child.Builder:
 			return Child.Builder.wrap(_b.init_struct(3, Child.DATA_WORDS, Child.PTR_WORDS))
 
-		func set_kind(value: int) -> void:
+		func set_kind(value: Kind) -> void:
 			_b.set_u16(4, value, 0)
 
 		func set_status_active() -> void:

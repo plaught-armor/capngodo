@@ -34,8 +34,8 @@ class Defaults extends RefCounted:
 		func get_textf() -> String:
 			return _r.get_text(0, "hello")
 
-		func get_enumf() -> int:
-			return _r.get_u16(12, 1)
+		func get_enumf() -> Shade:
+			return _r.get_u16(12, 1) as Shade
 
 		func get_dataf() -> PackedByteArray:
 			return _r.get_data(1, PackedByteArray([222, 173, 190, 239]))
@@ -75,7 +75,7 @@ class Defaults extends RefCounted:
 		func set_textf(value: String) -> void:
 			_b.set_text(0, value)
 
-		func set_enumf(value: int) -> void:
+		func set_enumf(value: Shade) -> void:
 			_b.set_u16(12, value, 1)
 
 		func set_dataf(value: PackedByteArray) -> void:
