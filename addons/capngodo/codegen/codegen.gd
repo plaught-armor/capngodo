@@ -688,7 +688,7 @@ static func _default_for(f: CapnReader.StructReader, tw: CapnSchema.TypeWhich) -
 	elif tw == CapnSchema.TypeWhich.TEXT:
 		return _gd_string(CapnSchema.value_text(dv))
 	elif tw == CapnSchema.TypeWhich.DATA:
-		return "PackedByteArray()"  # TODO: Data defaults
+		return _data_literal(CapnSchema.value_data(dv))
 	return "0"
 
 
@@ -718,6 +718,20 @@ static func _gd_string(s: String) -> String:
 	var e: String = s.replace("\\", "\\\\").replace("\"", "\\\"")
 	e = e.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
 	return "\"" + e + "\""
+
+
+## A GDScript PackedByteArray literal for `bytes` (a Data field's authored
+## default). The constructor form is required in expression position — there is
+## no typed annotation to coerce a bare `[...]`, and a `const` PackedByteArray is
+## broken (engine bug C1). Empty -> PackedByteArray().
+static func _data_literal(bytes: PackedByteArray) -> String:
+	if bytes.is_empty():
+		return "PackedByteArray()"
+	var parts: PackedStringArray = PackedStringArray()
+	parts.resize(bytes.size())
+	for i: int in bytes.size():
+		parts[i] = str(bytes[i])
+	return "PackedByteArray([%s])" % ", ".join(parts)
 
 
 ## TypeWhich -> CapnPointer.ElemSize token for a non-composite list.
@@ -766,7 +780,7 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 	elif tw == CapnSchema.TypeWhich.TEXT:
 		return "%s.get_text(%d, %s)" % [recv, off, def]
 	elif tw == CapnSchema.TypeWhich.DATA:
-		return "%s.get_data(%d)" % [recv, off]
+		return "%s.get_data(%d, %s)" % [recv, off, def]
 	elif tw == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _flat_of(t, flat_by_id)
 		if flat == "":

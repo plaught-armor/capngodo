@@ -10,4 +10,7 @@ struct Defaults {
   f64f   @4 :Float64 = 2.5;
   textf  @5 :Text    = "hello";
   enumf  @6 :Shade   = green;
+  dataf  @7 :Data    = 0x"de ad be ef";   # hex Data default (CG5)
+  datas  @8 :Data    = "abc";              # string-literal Data default
+  emptyd @9 :Data;                         # no explicit default -> empty
 }

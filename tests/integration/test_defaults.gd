@@ -16,6 +16,10 @@ func test_unset_fields_read_their_defaults() -> void:
 	assert_almost_eq(r.get_f64f(), 2.5, 0.0001, "f64 default")
 	assert_eq(r.get_textf(), "hello", "text default")
 	assert_eq(r.get_enumf(), DefaultsCapnp.Shade.GREEN, "enum default green")
+	# Data defaults (CG5): unset reads the authored bytes.
+	assert_eq(r.get_dataf(), PackedByteArray([0xDE, 0xAD, 0xBE, 0xEF]), "hex Data default")
+	assert_eq(r.get_datas(), PackedByteArray([0x61, 0x62, 0x63]), "string Data default 'abc'")
+	assert_eq(r.get_emptyd(), PackedByteArray(), "no-default Data reads empty")
 
 
 func test_set_fields_override_defaults() -> void:
@@ -25,12 +29,17 @@ func test_set_fields_override_defaults() -> void:
 	d.set_f32f(9.25)
 	d.set_textf("bye")
 	d.set_enumf(DefaultsCapnp.Shade.BLUE)
+	d.set_dataf(PackedByteArray([0x01, 0x02]))
 	var r: DefaultsCapnp.Defaults.Reader = DefaultsCapnp.read_defaults(d.to_bytes())
 	assert_eq(r.get_i32f(), 100, "i32 overridden")
 	assert_false(r.get_boolf(), "bool overridden")
 	assert_almost_eq(r.get_f32f(), 9.25, 0.0001, "f32 overridden")
 	assert_eq(r.get_textf(), "bye", "text overridden")
 	assert_eq(r.get_enumf(), DefaultsCapnp.Shade.BLUE, "enum overridden")
+	# A set Data field overrides its default (Data never XOR-encodes).
+	assert_eq(r.get_dataf(), PackedByteArray([0x01, 0x02]), "data overridden")
+	# Untouched Data field still reads its authored default.
+	assert_eq(r.get_datas(), PackedByteArray([0x61, 0x62, 0x63]), "untouched data still default")
 	# Untouched fields still read their defaults.
 	assert_eq(r.get_u16f(), 7, "untouched u16 still default")
 	assert_almost_eq(r.get_f64f(), 2.5, 0.0001, "untouched f64 still default")

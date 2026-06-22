@@ -6,7 +6,7 @@ enum Shade { RED, GREEN, BLUE }
 
 class Defaults extends RefCounted:
 	const DATA_WORDS: int = 3
-	const PTR_WORDS: int = 1
+	const PTR_WORDS: int = 4
 
 	class Reader extends RefCounted:
 		var _r: CapnReader.StructReader
@@ -36,6 +36,15 @@ class Defaults extends RefCounted:
 
 		func get_enumf() -> int:
 			return _r.get_u16(12, 1)
+
+		func get_dataf() -> PackedByteArray:
+			return _r.get_data(1, PackedByteArray([222, 173, 190, 239]))
+
+		func get_datas() -> PackedByteArray:
+			return _r.get_data(2, PackedByteArray([97, 98, 99]))
+
+		func get_emptyd() -> PackedByteArray:
+			return _r.get_data(3, PackedByteArray())
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -68,6 +77,15 @@ class Defaults extends RefCounted:
 
 		func set_enumf(value: int) -> void:
 			_b.set_u16(12, value, 1)
+
+		func set_dataf(value: PackedByteArray) -> void:
+			_b.set_data(1, value)
+
+		func set_datas(value: PackedByteArray) -> void:
+			_b.set_data(2, value)
+
+		func set_emptyd(value: PackedByteArray) -> void:
+			_b.set_data(3, value)
 
 
 static func read_defaults(bytes: PackedByteArray, packed: bool = false) -> Defaults.Reader:
