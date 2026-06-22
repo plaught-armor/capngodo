@@ -155,13 +155,29 @@ bit pattern (`def_bits`), not the float value.
 
 ## Codegen workflow
 
+> **Why is `capnp` required to generate?** It parses the schema and — crucially —
+> **computes the field offsets**. Cap'n Proto's official guidance is explicit:
+> *"Do not implement your own schema parser. The schema language is more
+> complicated than it looks, and the algorithm to determine offsets of fields is
+> subtle"* ([otherlang](https://capnproto.org/otherlang.html)). A re-implemented
+> layout algorithm risks diverging from `capnp` → wire-incompatible output. So
+> capngodo follows the recommended path: `capnp` is the frontend; we are the
+> code-generator plugin. It's a **build-time tool only** — generated `.gd` and
+> the runtime ship without it. (This is why we can't be fully self-contained like
+> godobuf: Protobuf has no field offsets to compute; Cap'n Proto's whole design
+> is fixed offsets.)
+
 ### 1. Get `capnp`
 
 ```sh
+# Linux/macOS — build from source (no sudo) or install a package:
 export CAPNPROTO_SRC=/path/to/capnproto      # a Cap'n Proto source checkout
 CAPNP="$(tools/build_capnp.sh)"              # builds + prints the binary path
-# ...or install a package and use `capnp` directly.
+# ...or: pacman -S capnproto / apt install capnproto / brew install capnp
 ```
+
+On **Windows**, install `capnp` via a package manager — `choco install capnproto`,
+`scoop install capnproto`, or `vcpkg install capnproto` — then use `capnp.exe`.
 
 ### 2. Configure the plugin shim
 
@@ -186,6 +202,27 @@ export PATH="$CAPNGODO_PROJECT/tools:$PATH"   # puts capnpc-gdscript on PATH
 `capnp` resolves `-o gdscript` to the `capnpc-gdscript` shim on your `PATH`,
 pipes it the compiled schema, and the shim runs the headless Godot plugin
 (`addons/capngodo/codegen/plugin_main.gd`), which writes the `.gd` file.
+
+### Any platform (shimless)
+
+The shim is just a convenience. This two-step works identically on **Linux,
+macOS, and Windows** with no shell-script dependency — `capnp` writes the
+request to a file, then you run the plugin directly:
+
+```sh
+# 1. capnp emits the CodeGeneratorRequest to a file
+capnp compile -o- myschema.capnp > request.bin
+
+# 2. run the plugin: args are <output-dir> <request-file>
+godot --headless --quiet --path /path/to/capngodo \
+    --script res://addons/capngodo/codegen/plugin_main.gd \
+    -- . request.bin
+```
+
+On Windows use `godot.exe` and a Windows path; otherwise the commands are the
+same. A Windows shim (`tools/capnpc-gdscript.cmd`) is also provided for the
+`-o gdscript` form, but `capnp` may not spawn a `.cmd` plugin on all setups — if
+`-o gdscript` fails on Windows, use this shimless method.
 
 ## API reference
 
@@ -327,6 +364,13 @@ configurable via `CapnLimits` (traversal-word ceiling + pointer depth, defaults
 
 ```sh
 CAPNGODO_GODOT=/path/to/godot tools/run_tests.sh
+```
+
+On Windows (no `sh`), run the underlying command directly:
+
+```bat
+godot.exe --headless --path . --import
+godot.exe --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginclude_subdirs -gexit
 ```
 
 Runs the full GUT suite headless. Integration tests decode the real Cap'n Proto

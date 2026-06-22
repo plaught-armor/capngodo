@@ -45,7 +45,8 @@ result on the tested paths — these are gaps, edges, and polish.
 | PK2 | ✅ | **README** | Done. Install, the `capnp compile -o gdscript` workflow, env vars, runtime-codec usage. Workflow verified verbatim. |
 | PK3 | ✅ | **GUT CI script** | Done — `tools/run_tests.sh` (import + GUT headless, propagates exit code). |
 | PK4 | P3 | **Editor plugin panel** | `plugin.gd` is a stub; optional in-editor "compile .capnp" UI (like godobuf). |
-| PK5 | — | **Repo folder rename** | `/mnt/.../capn-godo` → `capngodo` (user action; everything inside already says capngodo). |
+| PK5 | ✅ | **Repo folder rename** | Done — repo is `capngodo`. |
+| PK6 | P2 | **Verify Windows codegen on real Windows** | `tools/capnpc-gdscript.cmd` + the shimless 2-step are documented but UNTESTED on a real Windows host (developed on Linux). The plugin itself (`plugin_main.gd`) is cross-platform. Open Q: does capnp spawn a `.cmd` plugin via `-o gdscript` on Windows? If not, the shimless 2-step is the fallback. |
 
 ## Accepted as-is (documented, not bugs)
 
