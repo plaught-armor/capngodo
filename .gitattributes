@@ -11,3 +11,4 @@ tests/fixtures/testdata/segmented-packed -text
 tests/fixtures/schema.capnp.bin          -text
 tests/fixtures/*.cgr.bin                  -text
 tests/fixtures/*_msg.bin                  -text
+tests/fixtures/*.bin                      -text
