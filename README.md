@@ -26,6 +26,7 @@ builders produce bytes that `capnp decode` reads back correctly.
 - [Requirements](#requirements)
 - [Install](#install)
 - [Quick start](#quick-start)
+- [Examples](#examples)
 - [Type mapping](#type-mapping)
 - [Codegen workflow](#codegen-workflow)
 - [API reference](#api-reference)
@@ -132,6 +133,14 @@ var out: PackedByteArray = CapnBuilder.to_bytes(b, false)
 
 Offsets come from your schema — run `capnp compile -ocapnp` to see them, or just
 use the generated classes, which bake them in.
+
+## Examples
+
+[`examples/save_load/`](examples/save_load/) is a runnable **save/load demo**: a
+`GameState` (player, level, hp, position, inventory) serialized to Cap'n Proto
+bytes and written to `user://`, then read back. Open `demo.tscn` and run it, or
+call the static `SaveLoadDemo.save_game(path, dict)` / `load_game(path)` from
+your own code. The same round-trip is a smoke test in `tests/integration/`.
 
 ## Type mapping
 
