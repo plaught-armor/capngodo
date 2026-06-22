@@ -91,3 +91,17 @@ func test_named_group_union_void_arm_reads() -> void:
 	assert_eq(r.which(), GroupsCapnp.Outer.Which.EMPTY, "empty arm selected")
 	assert_true(r.is_empty(), "is_empty")
 	assert_false(r.is_box(), "not box")
+
+
+func test_named_group_as_union_arm_builds() -> void:
+	# CG4 closed the setter gap: the box leaf setters now write the outer
+	# discriminant, so a built box arm round-trips without manual disc poking.
+	var o: GroupsCapnp.Outer.Builder = GroupsCapnp.new_outer()
+	o.set_box_w(8)
+	o.set_box_h(5)
+
+	var r: GroupsCapnp.Outer.Reader = GroupsCapnp.read_outer(o.to_bytes())
+	assert_eq(r.which(), GroupsCapnp.Outer.Which.BOX, "box arm selected by leaf setter")
+	assert_true(r.is_box(), "is_box")
+	assert_eq(r.get_box_w(), 8, "box.w")
+	assert_eq(r.get_box_h(), 5, "box.h")

@@ -135,12 +135,12 @@ class Outer extends RefCounted:
 		func set_empty() -> void:
 			_b.set_u16(0, 0, 0)
 
-		# TODO: named group 'box' is a union arm — set outer which() manually
-
 		func set_box_w(value: int) -> void:
+			_b.set_u16(0, 1, 0)
 			_b.set_i32(4, value, 0)
 
 		func set_box_h(value: int) -> void:
+			_b.set_u16(0, 1, 0)
 			_b.set_i32(8, value, 0)
 
 
