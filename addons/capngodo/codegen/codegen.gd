@@ -539,6 +539,18 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 	if tw == CapnSchema.TypeWhich.ANY_POINTER:
 		_emit_anyptr_setter(lines, suffix, off, disc_line)
 		return
+	if tw == CapnSchema.TypeWhich.INTERFACE:
+		# Capability field: no RPC layer to inject a cap. As a union arm it still
+		# needs a selector that writes the discriminant(s) (so the arm is
+		# reachable); the cap itself stays unset. A plain field gets no setter.
+		if disc_line != "":
+			lines.append("")
+			lines.append(TAB + TAB + "func set_%s() -> void:  # selects this arm; the capability stays unset (no RPC)" % suffix)
+			lines.append(disc_line)
+		else:
+			lines.append("")
+			lines.append(TAB + TAB + "# capability '%s' is read-only (serialization only, no RPC)" % suffix)
+		return
 	lines.append("")
 	lines.append(TAB + TAB + "func set_%s(value: %s) -> void:" % [suffix, _return_type(tw, t, flat_by_id)])
 	if disc_line != "":
@@ -891,6 +903,10 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 		if flat == "":
 			return "null  # TODO(M6): unresolved cross-file struct"
 		return "%s.Reader.wrap(%s.get_struct(%d))" % [flat, recv, off]
+	elif tw == CapnSchema.TypeWhich.INTERFACE:
+		# Capability field: no RPC layer, so decode to the cap-table index
+		# (-1 when absent). Read-only — there's no setter (see _emit_slot_setter).
+		return "%s.get_cap_index(%d)" % [recv, off]
 	return "null  # TODO(M6): type %d" % tw
 
 
@@ -950,6 +966,8 @@ static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, f
 		# autocomplete; int underneath. Cross-file enum (unresolved) -> int.
 		var flat: String = _flat_of(t, flat_by_id)
 		return flat if flat != "" else "int"
+	elif tw == CapnSchema.TypeWhich.INTERFACE:
+		return "int"  # cap-table index
 	# int8..uint64 -> int
 	return "int"
 
