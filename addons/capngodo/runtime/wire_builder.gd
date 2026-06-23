@@ -64,7 +64,7 @@ class Arena extends RefCounted:
 	const WORD_BYTES: int = 8
 
 	var segments: Array[PackedByteArray] = []
-	var used_words: Array[int] = []
+	var used_words: PackedInt32Array = []
 	var cap_words: int = 0  # 0 = unlimited (single growing segment)
 
 	func _init(p_cap_words: int = 0) -> void:

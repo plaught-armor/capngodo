@@ -716,7 +716,7 @@ static func _disc_byte(gnode: CapnReader.StructReader) -> int:
 
 # Variant builtin type names (not in ClassDB) + GDScript keywords. ClassDB
 # covers every engine class (Node, Resource, ...) dynamically.
-const _VARIANT_TYPES: PackedStringArray = [
+static var _VARIANT_TYPES: PackedStringArray = [
 	"bool", "int", "float", "String", "StringName", "NodePath", "RID",
 	"Object", "Callable", "Signal", "Dictionary", "Array", "Variant", "Nil", "void",
 	"Vector2", "Vector2i", "Vector3", "Vector3i", "Vector4", "Vector4i",
@@ -726,7 +726,7 @@ const _VARIANT_TYPES: PackedStringArray = [
 	"PackedFloat64Array", "PackedStringArray", "PackedVector2Array",
 	"PackedVector3Array", "PackedVector4Array", "PackedColorArray",
 ]
-const _GD_KEYWORDS: PackedStringArray = [
+static var _GD_KEYWORDS: PackedStringArray = [
 	"if", "elif", "else", "for", "while", "match", "when", "break", "continue",
 	"pass", "return", "class", "class_name", "extends", "is", "as", "self",
 	"super", "signal", "func", "static", "const", "enum", "var", "breakpoint",
@@ -736,7 +736,7 @@ const _GD_KEYWORDS: PackedStringArray = [
 # Object getter stems a field would shadow via get_<stem>() — Readers/Builders
 # extend RefCounted (Object), so only Object's own getters matter (NOT Node's
 # get_name/get_path/get_owner). "class" is also a keyword, covered separately.
-const _RESERVED_MEMBERS: PackedStringArray = [
+static var _RESERVED_MEMBERS: PackedStringArray = [
 	"script", "meta", "instance_id", "method_list", "property_list",
 	"signal_list", "incoming_connections", "indexed",
 ]
