@@ -57,6 +57,15 @@ class MonoInst extends RefCounted:
 ## files each using Box(Text) emit their own Box_Text.
 static var _mono_by_sig: Dictionary[String, String] = {}
 
+## Inherit-mono key -> class name (CG1d). A nested struct that inherits its
+## enclosing generic's parameters (`Outer(T) { struct Inner { value :T } }`)
+## needs a per-instantiation mono (`Outer(Text)` → `Outer_Inner_Text`) whose name
+## can't be derived from the field's own brand (an INHERIT scope carries no
+## bindings — they come from the enclosing subst). Keyed by inner node id + the
+## enclosing subst signature so `Outer(Text).Inner` ≠ `Outer(Int).Inner`. Reset
+## alongside _mono_by_sig.
+static var _inherit_mono_by_key: Dictionary[String, String] = {}
+
 
 static func generate_files(cgr: CapnReader.StructReader) -> Dictionary[String, String]:
 	var nodes_by_id: Dictionary[int, CapnReader.StructReader] = _index_nodes(cgr)
@@ -167,6 +176,7 @@ static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by
 	# (Box(Text) -> Box_Text.Reader). The erased generic (CG1a) still emits as the
 	# unbound floor; mono classes are additive.
 	_mono_by_sig = {}
+	_inherit_mono_by_key = {}
 	var used_names: Dictionary[String, bool] = {}
 	for id: int in flat_by_id:
 		used_names[flat_by_id[id]] = true
@@ -435,7 +445,7 @@ static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructRea
 		return
 	if is_struct_arm:
 		_emit_is_arm(lines, fname, struct_disc, CapnSchema.field_discriminant_value(f))
-	_emit_slot_getter(lines, fname, f, flat_by_id)
+	_emit_slot_getter(lines, fname, f, flat_by_id, null, _inherit_flat(f, subst, subst_scope))
 
 
 ## Emit is_<name>() -> bool for a struct-level union arm: true when the struct's
@@ -450,11 +460,19 @@ static func _emit_is_arm(lines: PackedStringArray, fname: String, struct_disc: i
 ## type_override (CG1b): when non-null, emit the accessor with this Type instead
 ## of the field's declared type (a generic parameter slot bound to a concrete
 ## type). The wire offset still comes from `f` (param fields are pointer slots).
-static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], type_override: CapnReader.StructReader = null) -> void:
+## flat_override (CG1d): when non-empty, a STRUCT field resolves to this class name
+## instead of its brand-derived name — used for an inherit-branded field whose mono
+## name comes from the enclosing instantiation, not its own (erased) brand.
+static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], type_override: CapnReader.StructReader = null, flat_override: String = "") -> void:
 	var t: CapnReader.StructReader = type_override if type_override != null else CapnSchema.field_slot_type(f)
 	var off: int = CapnSchema.field_slot_offset(f)
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	if tw == CapnSchema.TypeWhich.VOID:
+		return
+	if tw == CapnSchema.TypeWhich.STRUCT and flat_override != "":
+		lines.append("")
+		lines.append(TAB + TAB + "func get_%s() -> %s.Reader:" % [suffix, flat_override])
+		lines.append(TAB + TAB + TAB + "return %s.Reader.wrap(_r.get_struct(%d))" % [flat_override, off])
 		return
 	if tw == CapnSchema.TypeWhich.LIST:
 		_emit_list_getter(lines, suffix, off, CapnSchema.type_list_element(t), flat_by_id)
@@ -612,17 +630,20 @@ static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructRea
 			_emit_named_group_setters(lines, fname, named, flat_by_id, by_id, -1, 0, subst, subst_scope)
 		return
 	# A struct-level union member's setter also writes the discriminant.
+	var flat_override: String = _inherit_flat(f, subst, subst_scope)
 	if struct_disc >= 0 and CapnSchema.field_in_union(f):
-		_emit_slot_setter(lines, fname, f, flat_by_id, struct_disc, CapnSchema.field_discriminant_value(f))
+		_emit_slot_setter(lines, fname, f, flat_by_id, struct_disc, CapnSchema.field_discriminant_value(f), -1, 0, null, flat_override)
 	else:
-		_emit_slot_setter(lines, fname, f, flat_by_id, -1, 0)
+		_emit_slot_setter(lines, fname, f, flat_by_id, -1, 0, -1, 0, null, flat_override)
 
 
 ## Emit a setter (set_/init_) for a slot field. When disc_off >= 0 the field is
 ## a union member, so the setter writes the discriminant first.
 ## type_override (CG1b): see _emit_slot_getter — a generic parameter slot bound to
 ## a concrete type emits a typed setter; offset still from `f`.
-static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_off: int, disc_val: int, outer_disc_off: int = -1, outer_disc_val: int = 0, type_override: CapnReader.StructReader = null) -> void:
+## flat_override (CG1d): see _emit_slot_getter — a STRUCT field resolves to this
+## class name (an inherit-branded field's enclosing-instantiation mono).
+static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_off: int, disc_val: int, outer_disc_off: int = -1, outer_disc_val: int = 0, type_override: CapnReader.StructReader = null, flat_override: String = "") -> void:
 	var t: CapnReader.StructReader = type_override if type_override != null else CapnSchema.field_slot_type(f)
 	var off: int = CapnSchema.field_slot_offset(f)
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
@@ -647,7 +668,7 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 		_emit_list_setter(lines, suffix, off, CapnSchema.type_list_element(t), flat_by_id, disc_line)
 		return
 	if tw == CapnSchema.TypeWhich.STRUCT:
-		var child: String = _struct_flat(t, flat_by_id)
+		var child: String = flat_override if flat_override != "" else _struct_flat(t, flat_by_id)
 		if child == "":
 			lines.append("")
 			lines.append(TAB + TAB + "# TODO(M6): init '%s' (unresolved cross-file struct)" % suffix)
@@ -1248,6 +1269,101 @@ static func _register_inst(t: CapnReader.StructReader, by_id: Dictionary[int, Ca
 	used_names[mono_name] = true
 	_mono_by_sig[sig] = mono_name
 	insts.append(MonoInst.new(gen_node, mono_name, subst, gen_id))
+	# A nested struct of this generic that inherits its parameters (INHERIT brand)
+	# needs its own per-instantiation mono so the inherited param resolves (CG1d).
+	_register_inherit_monos(gen_node, gen_id, subst, by_id, flat_by_id, insts, used_names, 0)
+
+
+## Register a mono for every nested struct of `gen_node` whose field type carries
+## an INHERIT brand scope for `gen_id` — i.e. it inherits the enclosing generic's
+## parameters (`Outer(T).Inner` referenced by `inner :Inner`). The inner mono
+## reuses the enclosing `subst` (the inner struct's param slots scope to `gen_id`,
+## so _param_override types them when _emit_struct re-emits the inner node with
+## this subst). depth bounds the walk (NASA rule 2); only direct top-level slot
+## fields are handled — a group-nested or deeper-chained inherit field degrades to
+## the erased floor (no wrong output).
+static func _register_inherit_monos(gen_node: CapnReader.StructReader, gen_id: int, subst: Dictionary[int, CapnReader.StructReader], by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], insts: Array[MonoInst], used_names: Dictionary[String, bool], depth: int) -> void:
+	if depth >= _MAX_GENERIC_DEPTH:
+		push_error("[CapnCodegen] inherit-mono nesting exceeds %d — not monomorphizing deeper" % _MAX_GENERIC_DEPTH)
+		return
+	var fields: CapnReader.ListReader = CapnSchema.node_struct_fields(gen_node)
+	for i: int in fields.size():
+		var f: CapnReader.StructReader = fields.get_struct(i)
+		if CapnSchema.field_which(f) != CapnSchema.FieldWhich.SLOT:
+			continue
+		var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
+		if not _inherits_scope(t, gen_id):
+			continue
+		var inner_id: int = CapnSchema.type_id(t)
+		# A self-reference (inner_id == gen_id) is the generic itself, not a nested
+		# inheriting struct — it resolves through _mono_by_sig (or the erased floor),
+		# never a separate inherit mono. Skip to avoid a split-brain duplicate class.
+		if inner_id == gen_id:
+			continue
+		var inner_node: CapnReader.StructReader = by_id.get(inner_id)
+		if inner_node == null or not flat_by_id.has(inner_id):
+			continue
+		var key: String = _inherit_key(inner_id, subst)
+		if _inherit_mono_by_key.has(key):
+			continue
+		var name: String = _uniquify(_mono_name_from_subst(flat_by_id[inner_id], subst, flat_by_id), used_names)
+		used_names[name] = true
+		_inherit_mono_by_key[key] = name
+		insts.append(MonoInst.new(inner_node, name, subst, gen_id))
+		# The inner mono may itself reference further inherit structs of the same
+		# generic — register those too (still scoped to gen_id).
+		_register_inherit_monos(inner_node, gen_id, subst, by_id, flat_by_id, insts, used_names, depth + 1)
+
+
+## True when STRUCT type `t` carries an INHERIT brand scope for `sid` (it inherits
+## the parameters of the generic whose node id is `sid`).
+static func _inherits_scope(t: CapnReader.StructReader, sid: int) -> bool:
+	if CapnSchema.type_which(t) != CapnSchema.TypeWhich.STRUCT:
+		return false
+	var scopes: CapnReader.ListReader = CapnSchema.brand_scopes(CapnSchema.type_brand(t))
+	for i: int in scopes.size():
+		var s: CapnReader.StructReader = scopes.get_struct(i)
+		if CapnSchema.scope_id(s) == sid and CapnSchema.scope_which(s) == CapnSchema.BrandScopeWhich.INHERIT:
+			return true
+	return false
+
+
+## Dedup/lookup key for an inherit mono: inner node id + the enclosing subst's
+## bound-type signatures (index order). Distinguishes Outer(Text).Inner from
+## Outer(Int).Inner, which share the same inner node id but differ in subst.
+static func _inherit_key(inner_id: int, subst: Dictionary[int, CapnReader.StructReader]) -> String:
+	var s: String = str(inner_id)
+	var idxs: Array = subst.keys()
+	idxs.sort()
+	for k: int in idxs:
+		s += "#" + _sig_of_type(subst[k])
+	return s
+
+
+## Human mono name for an inherit instantiation: "<InnerFlat>_<Arg>…" using the
+## enclosing subst's bound types (Outer_Inner + Text -> Outer_Inner_Text).
+static func _mono_name_from_subst(inner_flat: String, subst: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String]) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	parts.append(_basename(inner_flat))
+	var idxs: Array = subst.keys()
+	idxs.sort()
+	for k: int in idxs:
+		parts.append(_arg_name_of_type(subst[k], flat_by_id))
+	return _safe_type("_".join(parts))
+
+
+## The inherit-mono class name for slot field `f` in a `subst`/`subst_scope`
+## context, or "" when `f` is not an inherit-branded struct field (CG1d). Read at
+## emit time by the slot getter/setter to resolve the field to its mono.
+static func _inherit_flat(f: CapnReader.StructReader, subst: Dictionary[int, CapnReader.StructReader], subst_scope: int) -> String:
+	if subst_scope == 0:
+		return ""
+	if CapnSchema.field_which(f) != CapnSchema.FieldWhich.SLOT:
+		return ""
+	var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
+	if not _inherits_scope(t, subst_scope):
+		return ""
+	return _inherit_mono_by_key.get(_inherit_key(CapnSchema.type_id(t), subst), "")
 
 
 ## True when STRUCT type `t` carries a brand that binds at least one of its own
