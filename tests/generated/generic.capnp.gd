@@ -1,6 +1,6 @@
 class_name GenericCapnp extends RefCounted
 
-## GENERATED from tests/golden/generic.capnp by capnpc-gdscript — do not edit.
+## GENERATED from generic.capnp by capnpc-gdscript — do not edit.
 
 class Inner extends RefCounted:
 	const DATA_WORDS: int = 1
@@ -290,13 +290,8 @@ class Box_List_Int32 extends RefCounted:
 			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
-		func get_value() -> Array[int]:
-			var lr: CapnReader.ListReader = self.get_list(0)
-			var out: Array[int] = []
-			out.resize(lr.size())
-			for i: int in lr.size():
-				out[i] = lr.get_i32(i)
-			return out
+		func get_value() -> PackedInt32Array:
+			return self.get_list(0).to_int32_array()
 
 		func get_label() -> String:
 			return self.get_text(1, "")
@@ -312,8 +307,9 @@ class Box_List_Int32 extends RefCounted:
 		func to_bytes(packed: bool = false) -> PackedByteArray:
 			return CapnBuilder.to_bytes(_b, packed)
 
-		func init_value(n: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(0, CapnPointer.ElemSize.FOUR_BYTES, n)
+		func set_value(value: PackedInt32Array) -> void:
+			var lb: CapnBuilder.ListBuilder = _b.init_list(0, CapnPointer.ElemSize.FOUR_BYTES, value.size())
+			lb.set_int32_array(value)
 
 		func set_label(value: String) -> void:
 			_b.set_text(1, value)

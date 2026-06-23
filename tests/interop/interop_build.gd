@@ -38,9 +38,7 @@ func _build(path: String) -> int:
 	var tags: CapnBuilder.ListBuilder = root.init_tags(TAGS.size())
 	for i: int in TAGS.size():
 		tags.set_text(i, TAGS[i])
-	var scores: CapnBuilder.ListBuilder = root.init_scores(SCORES.size())
-	for i: int in SCORES.size():
-		scores.set_i32(i, SCORES[i])
+	root.set_scores(SCORES)
 	var child: InteropCapnp.Child.Builder = root.init_child()
 	child.set_note(NOTE)
 	root.set_kind(InteropCapnp.Kind.BETA)

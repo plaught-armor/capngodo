@@ -1,6 +1,6 @@
 class_name GroupsCapnp extends RefCounted
 
-## GENERATED from tests/golden/groups.capnp by capnpc-gdscript — do not edit.
+## GENERATED from groups.capnp by capnpc-gdscript — do not edit.
 
 class Entity extends RefCounted:
 	const DATA_WORDS: int = 4

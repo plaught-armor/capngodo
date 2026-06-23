@@ -1,6 +1,6 @@
 class_name NestedUnionCapnp extends RefCounted
 
-## GENERATED from tests/golden/nested_union.capnp by capnpc-gdscript — do not edit.
+## GENERATED from nested_union.capnp by capnpc-gdscript — do not edit.
 
 class Msg extends RefCounted:
 	const DATA_WORDS: int = 2

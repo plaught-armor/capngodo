@@ -1,6 +1,6 @@
 class_name NestedListsCapnp extends RefCounted
 
-## GENERATED from tests/golden/nested_lists.capnp by capnpc-gdscript — do not edit.
+## GENERATED from nested_lists.capnp by capnpc-gdscript — do not edit.
 
 class Cell extends RefCounted:
 	const DATA_WORDS: int = 1

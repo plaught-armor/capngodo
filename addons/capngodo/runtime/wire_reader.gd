@@ -461,6 +461,32 @@ class ListReader extends RefCounted:
 	func to_data() -> PackedByteArray:
 		return CapnTextData.data_from(_buf(), first_elem_word * WORD_BYTES, count)
 
+	# Bulk primitive-list decode: slice the contiguous element span and reinterpret
+	# in one C++ call instead of a per-element decode loop (~100x for large lists).
+	# The wire stores primitive lists contiguous + little-endian, matching the
+	# Packed*Array in-memory layout — correct on little-endian hosts (every platform
+	# Godot ships). Caller (codegen) only routes the clean fixed-width types here;
+	# the list is never composite, so the span is (first_elem_word, count * width).
+	func to_float32_array() -> PackedFloat32Array:
+		var off: int = first_elem_word * WORD_BYTES
+		return _buf().slice(off, off + count * 4).to_float32_array()
+
+	func to_float64_array() -> PackedFloat64Array:
+		var off: int = first_elem_word * WORD_BYTES
+		return _buf().slice(off, off + count * 8).to_float64_array()
+
+	func to_int32_array() -> PackedInt32Array:
+		var off: int = first_elem_word * WORD_BYTES
+		return _buf().slice(off, off + count * 4).to_int32_array()
+
+	func to_int64_array() -> PackedInt64Array:
+		var off: int = first_elem_word * WORD_BYTES
+		return _buf().slice(off, off + count * 8).to_int64_array()
+
+	func to_byte_array() -> PackedByteArray:
+		var off: int = first_elem_word * WORD_BYTES
+		return _buf().slice(off, off + count)
+
 	# Primitive element getters (no XOR; lists carry no per-element defaults).
 	func get_u8(i: int) -> int:
 		return _buf().decode_u8(_elem_byte(i))

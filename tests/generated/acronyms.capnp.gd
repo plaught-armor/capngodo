@@ -1,6 +1,6 @@
 class_name AcronymsCapnp extends RefCounted
 
-## GENERATED from mnt/based_backup/Repos/capngodo/tests/golden/acronyms.capnp by capnpc-gdscript — do not edit.
+## GENERATED from acronyms.capnp by capnpc-gdscript — do not edit.
 
 class HTTPServer extends RefCounted:
 	const DATA_WORDS: int = 2

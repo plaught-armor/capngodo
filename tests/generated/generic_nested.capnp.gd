@@ -1,6 +1,6 @@
 class_name GenericNestedCapnp extends RefCounted
 
-## GENERATED from tests/golden/generic_nested.capnp by capnpc-gdscript — do not edit.
+## GENERATED from generic_nested.capnp by capnpc-gdscript — do not edit.
 
 class Cell extends RefCounted:
 	const DATA_WORDS: int = 1

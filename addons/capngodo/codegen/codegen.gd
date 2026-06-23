@@ -186,7 +186,10 @@ static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("class_name %s extends RefCounted" % _umbrella_class(fname))
 	lines.append("")
-	lines.append("## GENERATED from %s by capnpc-gdscript — do not edit." % fname)
+	# Basename only — the header must not depend on how capnp was invoked (bare
+	# `defaults.capnp`, `tests/golden/defaults.capnp`, or an absolute path all
+	# produce the same comment), so the CLI-golden test matches regardless of cwd.
+	lines.append("## GENERATED from %s by capnpc-gdscript — do not edit." % fname.get_file())
 	lines.append("")
 
 	# Enums first (class-scoped), then schema-level consts, then struct classes.
@@ -600,6 +603,14 @@ static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + "func get_%s() -> CapnReader.ListReader:" % fname)
 		lines.append(TAB + TAB + TAB + "return self.get_list(%d)" % off)
 		return
+	# Bulk primitive list: one slice + reinterpret into a Packed*Array, no
+	# per-element loop (~100x for large lists). S6: Packed* over Array[primitive].
+	var pk: PackedStringArray = _packed_list(ew)
+	if not pk.is_empty():
+		lines.append("")
+		lines.append(TAB + TAB + "func get_%s() -> %s:" % [fname, pk[0]])
+		lines.append(TAB + TAB + TAB + "return self.get_list(%d).%s()" % [off, pk[1]])
+		return
 	# Type the returned container by element kind for autocomplete at the call
 	# site. Indexed writes into a typed Array carry the element type directly —
 	# no C3 .assign() needed.
@@ -622,11 +633,37 @@ static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int,
 	lines.append(TAB + TAB + TAB + "return out")
 
 
-## The typed container type for a list getter — "Array[<T>]", or plain "Array"
-## when the element type is erased/unresolved (AnyPointer, list-of-list,
-## interface, void, or a cross-file struct not yet in flat_by_id). Checks
-## _flat_of directly for structs rather than reading _return_type's sentinel.
+## Primitive element types whose wire layout (contiguous little-endian) maps 1:1
+## onto a Godot Packed*Array, so the whole list bulk-decodes in one slice +
+## reinterpret (~100x vs a per-element loop) and builds from a Packed* in one call.
+## Returns [container_type, reader_method, builder_method] or an empty array for
+## types that stay per-element: Int8 (sign vs unsigned byte), Int16/UInt16 (no
+## 16-bit Packed), UInt32/UInt64 (to_int* reinterprets signed — would diverge from
+## the unsigned per-element reads), Bool (bit-packed), Text/Data/struct/etc.
+## Decode correctness assumes a little-endian host — every platform Godot ships.
+static func _packed_list(ew: CapnSchema.TypeWhich) -> PackedStringArray:
+	if ew == CapnSchema.TypeWhich.FLOAT32:
+		return ["PackedFloat32Array", "to_float32_array", "set_float32_array"]
+	if ew == CapnSchema.TypeWhich.FLOAT64:
+		return ["PackedFloat64Array", "to_float64_array", "set_float64_array"]
+	if ew == CapnSchema.TypeWhich.INT32:
+		return ["PackedInt32Array", "to_int32_array", "set_int32_array"]
+	if ew == CapnSchema.TypeWhich.INT64:
+		return ["PackedInt64Array", "to_int64_array", "set_int64_array"]
+	if ew == CapnSchema.TypeWhich.UINT8:
+		return ["PackedByteArray", "to_byte_array", "set_byte_array"]
+	return PackedStringArray()
+
+
+## The typed container type for a list getter — a Packed*Array for the bulk
+## primitive types (_packed_list), "Array[<T>]", or plain "Array" when the element
+## type is erased/unresolved (AnyPointer, list-of-list, interface, void, or a
+## cross-file struct not yet in flat_by_id). Checks _flat_of directly for structs
+## rather than reading _return_type's sentinel.
 static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
+	var pk: PackedStringArray = _packed_list(ew)
+	if not pk.is_empty():
+		return pk[0]
 	if ew == CapnSchema.TypeWhich.LIST:
 		# List(List(T)): each element is a lazy inner list reader; the caller reads
 		# its elements with typed getters (or recurses for deeper nesting) (CG10).
@@ -817,6 +854,17 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + TAB + "for i: int in n:")
 		lines.append(TAB + TAB + TAB + TAB + "out[i] = %s.Builder.wrap(lb.init_struct(i))" % child)
 		lines.append(TAB + TAB + TAB + "return out")
+		return
+	# Bulk primitive list: set the whole field from a Packed*Array, symmetric with
+	# the Packed* getter. (Build loops internally — no GDScript blit — but the
+	# Packed* in/out API is the ergonomic + S6-aligned shape.)
+	var pk: PackedStringArray = _packed_list(ew)
+	if not pk.is_empty():
+		lines.append(TAB + TAB + "func set_%s(value: %s) -> void:" % [fname, pk[0]])
+		if not disc_line.is_empty():
+			lines.append(disc_line)
+		lines.append(TAB + TAB + TAB + "var lb: CapnBuilder.ListBuilder = _b.init_list(%d, %s, value.size())" % [off, _elem_size_token(ew)])
+		lines.append(TAB + TAB + TAB + "lb.%s(value)" % pk[2])
 		return
 	# Primitive / Text / Data list -> a raw ListBuilder; caller sets elements
 	# via lb.set_<kind>(i, value). A List(List(T)) outer also lands here:

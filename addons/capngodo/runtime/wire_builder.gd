@@ -334,6 +334,45 @@ class ListBuilder extends RefCounted:
 		var mask: int = 1 << bit_in_byte
 		_buf().encode_u8(byte_off, (b | mask) if value else (b & (~mask & 0xff)))
 
+	# Bulk primitive-list write — fill the whole list from a Packed*Array. GDScript
+	# has no PackedByteArray blit, so these loop internally (no build speedup over
+	# per-element set_*); they exist for API symmetry with the bulk reader getters
+	# (Packed* in / Packed* out) and ergonomics. n is bounded by the list count.
+	func set_float32_array(values: PackedFloat32Array) -> void:
+		var n: int = mini(values.size(), count)
+		var i: int = 0
+		while i < n:
+			set_f32(i, values[i])
+			i += 1
+
+	func set_float64_array(values: PackedFloat64Array) -> void:
+		var n: int = mini(values.size(), count)
+		var i: int = 0
+		while i < n:
+			set_f64(i, values[i])
+			i += 1
+
+	func set_int32_array(values: PackedInt32Array) -> void:
+		var n: int = mini(values.size(), count)
+		var i: int = 0
+		while i < n:
+			set_u32(i, values[i] & 0xffffffff)
+			i += 1
+
+	func set_int64_array(values: PackedInt64Array) -> void:
+		var n: int = mini(values.size(), count)
+		var i: int = 0
+		while i < n:
+			set_u64(i, values[i])
+			i += 1
+
+	func set_byte_array(values: PackedByteArray) -> void:
+		var n: int = mini(values.size(), count)
+		var i: int = 0
+		while i < n:
+			set_u8(i, values[i])
+			i += 1
+
 	## Builder for composite element i (valid only on a composite list).
 	func init_struct(i: int) -> StructBuilder:
 		var base_word: int = first_elem_word + i * step_words

@@ -1,6 +1,6 @@
 class_name GenericIfaceCapnp extends RefCounted
 
-## GENERATED from tests/golden/generic_iface.capnp by capnpc-gdscript — do not edit.
+## GENERATED from generic_iface.capnp by capnpc-gdscript — do not edit.
 
 class Box extends RefCounted:
 	const DATA_WORDS: int = 0

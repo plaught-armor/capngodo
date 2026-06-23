@@ -8,9 +8,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      # Godot 4.4+ required (typed Dictionary); project targets 4.6+. The GUT
-      # suite needs no capnp (committed fixtures); the interop job does.
-      GODOT_VERSION: 4.4.1-stable
+      # Latest stable Godot (project targets 4.6+; codegen output is
+      # version-stable, so goldens generated on dev/stable match). The GUT suite
+      # needs no capnp (committed fixtures); the interop job does.
+      GODOT_VERSION: 4.7-stable
     steps:
       - uses: actions/checkout@v4
 
