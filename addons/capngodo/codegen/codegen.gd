@@ -239,7 +239,7 @@ static func _emit_enum(lines: PackedStringArray, entry: CodegenEntry) -> void:
 ## / bool / float / Text / enum values; Data (C1 — Packed* can't be const),
 ## struct, list, and pointer consts emit a TODO (rare; would need a static var
 ## or a value builder).
-static func _emit_const(lines: PackedStringArray, entry: CodegenEntry, flat_by_id: Dictionary[int, String]) -> void:
+static func _emit_const(lines: PackedStringArray, entry: CodegenEntry, _flat_by_id: Dictionary[int, String]) -> void:
 	var t: CapnReader.StructReader = CapnSchema.const_type(entry.node)
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	var name: String = _safe_enum_member(_snake(entry.flat).to_upper())
@@ -257,9 +257,9 @@ static func _emit_const(lines: PackedStringArray, entry: CodegenEntry, flat_by_i
 static func _const_type_str(tw: CapnSchema.TypeWhich) -> String:
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "bool"
-	elif tw == CapnSchema.TypeWhich.FLOAT32 or tw == CapnSchema.TypeWhich.FLOAT64:
+	if tw == CapnSchema.TypeWhich.FLOAT32 or tw == CapnSchema.TypeWhich.FLOAT64:
 		return "float"
-	elif tw == CapnSchema.TypeWhich.TEXT:
+	if tw == CapnSchema.TypeWhich.TEXT:
 		return "String"
 	return "int"
 
@@ -269,31 +269,31 @@ static func _const_type_str(tw: CapnSchema.TypeWhich) -> String:
 static func _const_literal(v: CapnReader.StructReader, tw: CapnSchema.TypeWhich) -> String:
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "true" if CapnSchema.value_bool(v) else "false"
-	elif tw == CapnSchema.TypeWhich.INT8:
+	if tw == CapnSchema.TypeWhich.INT8:
 		return str(CapnSchema.value_i8(v))
-	elif tw == CapnSchema.TypeWhich.INT16:
+	if tw == CapnSchema.TypeWhich.INT16:
 		return str(CapnSchema.value_i16(v))
-	elif tw == CapnSchema.TypeWhich.INT32:
+	if tw == CapnSchema.TypeWhich.INT32:
 		return str(CapnSchema.value_i32(v))
-	elif tw == CapnSchema.TypeWhich.INT64:
+	if tw == CapnSchema.TypeWhich.INT64:
 		return str(CapnSchema.value_i64(v))
-	elif tw == CapnSchema.TypeWhich.UINT8:
+	if tw == CapnSchema.TypeWhich.UINT8:
 		return str(CapnSchema.value_u8(v))
-	elif tw == CapnSchema.TypeWhich.UINT16:
+	if tw == CapnSchema.TypeWhich.UINT16:
 		return str(CapnSchema.value_u16(v))
-	elif tw == CapnSchema.TypeWhich.UINT32:
+	if tw == CapnSchema.TypeWhich.UINT32:
 		return str(CapnSchema.value_u32(v))
-	elif tw == CapnSchema.TypeWhich.UINT64:
+	if tw == CapnSchema.TypeWhich.UINT64:
 		return str(CapnSchema.value_u64(v))
-	elif tw == CapnSchema.TypeWhich.ENUM:
+	if tw == CapnSchema.TypeWhich.ENUM:
 		# UInt64 > 2^63-1 reads back negative (Godot int is signed, no unsigned
 		# 64-bit Variant) — a wire-wide limitation, not specific to consts.
 		return str(CapnSchema.value_enum(v))
-	elif tw == CapnSchema.TypeWhich.FLOAT32:
+	if tw == CapnSchema.TypeWhich.FLOAT32:
 		return _float_literal(CapnSchema.value_f32(v), false)
-	elif tw == CapnSchema.TypeWhich.FLOAT64:
+	if tw == CapnSchema.TypeWhich.FLOAT64:
 		return _float_literal(CapnSchema.value_f64(v), true)
-	elif tw == CapnSchema.TypeWhich.TEXT:
+	if tw == CapnSchema.TypeWhich.TEXT:
 		return _gd_string(CapnSchema.value_text(v))
 	return ""
 
@@ -983,7 +983,7 @@ static func _disc_byte(gnode: CapnReader.StructReader) -> int:
 # covers every engine class (Node, Resource, ...) dynamically. Dictionaries (not
 # PackedStringArray) for O(1) `.has()` — these are membership sets, queried per
 # emitted identifier, never iterated (P8).
-static var _VARIANT_TYPES: Dictionary[String, bool] = {
+static var _variant_types: Dictionary[String, bool] = {
 	"bool": true,
 	"int": true,
 	"float": true,
@@ -1026,7 +1026,7 @@ static var _VARIANT_TYPES: Dictionary[String, bool] = {
 	"PackedVector4Array": true,
 	"PackedColorArray": true,
 }
-static var _GD_KEYWORDS: Dictionary[String, bool] = {
+static var _gd_keywords: Dictionary[String, bool] = {
 	"if": true,
 	"elif": true,
 	"else": true,
@@ -1072,7 +1072,7 @@ static var _GD_KEYWORDS: Dictionary[String, bool] = {
 # Object getter stems a field would shadow via get_<stem>() — Readers/Builders
 # extend RefCounted (Object), so only Object's own getters matter (NOT Node's
 # get_name/get_path/get_owner). "class" is also a keyword, covered separately.
-static var _RESERVED_MEMBERS: Dictionary[String, bool] = {
+static var _reserved_members: Dictionary[String, bool] = {
 	"script": true,
 	"meta": true,
 	"instance_id": true,
@@ -1094,7 +1094,7 @@ static var _RESERVED_MEMBERS: Dictionary[String, bool] = {
 ## True if `name` would collide with a Godot type or GDScript keyword as a
 ## generated class/enum identifier.
 static func _is_reserved_type(name: String) -> bool:
-	return ClassDB.class_exists(name) or _VARIANT_TYPES.has(name) or _GD_KEYWORDS.has(name)
+	return ClassDB.class_exists(name) or _variant_types.has(name) or _gd_keywords.has(name)
 
 
 ## A collision-safe type identifier (trailing "_" on reserved names).
@@ -1105,7 +1105,7 @@ static func _safe_type(name: String) -> String:
 ## A collision-safe field stem for get_<stem>()/set_<stem>() — avoids GDScript
 ## keywords and Object methods we'd otherwise shadow.
 static func _safe_member(stem: String) -> String:
-	if _GD_KEYWORDS.has(stem) or _RESERVED_MEMBERS.has(stem):
+	if _gd_keywords.has(stem) or _reserved_members.has(stem):
 		return stem + "_"
 	return stem
 
@@ -1113,7 +1113,7 @@ static func _safe_member(stem: String) -> String:
 ## A collision-safe enum member (UPPERCASE) — avoids GDScript's uppercase
 ## built-in constants (PI/TAU/INF/NAN, and TRUE/FALSE/NULL via the keyword list).
 static func _safe_enum_member(upper: String) -> String:
-	return (upper + "_") if _GD_KEYWORDS.has(upper) else upper
+	return (upper + "_") if _gd_keywords.has(upper) else upper
 
 
 static func _pascal(snake: String) -> String:
@@ -1131,31 +1131,31 @@ static func _pascal(snake: String) -> String:
 static func _scalar_set(recv: String, tw: CapnSchema.TypeWhich, off: int, def: String) -> String:
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "%s.set_bool(%d, value, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.INT8:
+	if tw == CapnSchema.TypeWhich.INT8:
 		return "%s.set_i8(%d, value, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.INT16:
+	if tw == CapnSchema.TypeWhich.INT16:
 		return "%s.set_i16(%d, value, %s)" % [recv, off * 2, def]
-	elif tw == CapnSchema.TypeWhich.INT32:
+	if tw == CapnSchema.TypeWhich.INT32:
 		return "%s.set_i32(%d, value, %s)" % [recv, off * 4, def]
-	elif tw == CapnSchema.TypeWhich.INT64:
+	if tw == CapnSchema.TypeWhich.INT64:
 		return "%s.set_i64(%d, value, %s)" % [recv, off * 8, def]
-	elif tw == CapnSchema.TypeWhich.UINT8:
+	if tw == CapnSchema.TypeWhich.UINT8:
 		return "%s.set_u8(%d, value, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.UINT16:
+	if tw == CapnSchema.TypeWhich.UINT16:
 		return "%s.set_u16(%d, value, %s)" % [recv, off * 2, def]
-	elif tw == CapnSchema.TypeWhich.UINT32:
+	if tw == CapnSchema.TypeWhich.UINT32:
 		return "%s.set_u32(%d, value, %s)" % [recv, off * 4, def]
-	elif tw == CapnSchema.TypeWhich.UINT64:
+	if tw == CapnSchema.TypeWhich.UINT64:
 		return "%s.set_u64(%d, value, %s)" % [recv, off * 8, def]
-	elif tw == CapnSchema.TypeWhich.FLOAT32:
+	if tw == CapnSchema.TypeWhich.FLOAT32:
 		return "%s.set_f32(%d, value, %s)" % [recv, off * 4, def]
-	elif tw == CapnSchema.TypeWhich.FLOAT64:
+	if tw == CapnSchema.TypeWhich.FLOAT64:
 		return "%s.set_f64(%d, value, %s)" % [recv, off * 8, def]
-	elif tw == CapnSchema.TypeWhich.ENUM:
+	if tw == CapnSchema.TypeWhich.ENUM:
 		return "%s.set_u16(%d, value, %s)" % [recv, off * 2, def]
-	elif tw == CapnSchema.TypeWhich.TEXT:
+	if tw == CapnSchema.TypeWhich.TEXT:
 		return "%s.set_text(%d, value)" % [recv, off]
-	elif tw == CapnSchema.TypeWhich.DATA:
+	if tw == CapnSchema.TypeWhich.DATA:
 		return "%s.set_data(%d, value)" % [recv, off]
 	return "pass  # TODO(M6): set type %d" % tw
 
@@ -1167,39 +1167,39 @@ static func _default_for(f: CapnReader.StructReader, tw: CapnSchema.TypeWhich) -
 	if not CapnSchema.field_slot_had_default(f):
 		if tw == CapnSchema.TypeWhich.BOOL:
 			return "false"
-		elif tw == CapnSchema.TypeWhich.TEXT:
+		if tw == CapnSchema.TypeWhich.TEXT:
 			return "\"\""
-		elif tw == CapnSchema.TypeWhich.DATA:
+		if tw == CapnSchema.TypeWhich.DATA:
 			return "PackedByteArray()"
 		return "0"
 	var dv: CapnReader.StructReader = CapnSchema.field_slot_default(f)
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "true" if CapnSchema.value_bool(dv) else "false"
-	elif tw == CapnSchema.TypeWhich.INT8:
+	if tw == CapnSchema.TypeWhich.INT8:
 		return str(CapnSchema.value_i8(dv))
-	elif tw == CapnSchema.TypeWhich.INT16:
+	if tw == CapnSchema.TypeWhich.INT16:
 		return str(CapnSchema.value_i16(dv))
-	elif tw == CapnSchema.TypeWhich.INT32:
+	if tw == CapnSchema.TypeWhich.INT32:
 		return str(CapnSchema.value_i32(dv))
-	elif tw == CapnSchema.TypeWhich.INT64:
+	if tw == CapnSchema.TypeWhich.INT64:
 		return str(CapnSchema.value_i64(dv))
-	elif tw == CapnSchema.TypeWhich.UINT8:
+	if tw == CapnSchema.TypeWhich.UINT8:
 		return str(CapnSchema.value_u8(dv))
-	elif tw == CapnSchema.TypeWhich.UINT16:
+	if tw == CapnSchema.TypeWhich.UINT16:
 		return str(CapnSchema.value_u16(dv))
-	elif tw == CapnSchema.TypeWhich.UINT32:
+	if tw == CapnSchema.TypeWhich.UINT32:
 		return str(CapnSchema.value_u32(dv))
-	elif tw == CapnSchema.TypeWhich.UINT64:
+	if tw == CapnSchema.TypeWhich.UINT64:
 		return str(CapnSchema.value_u64(dv))
-	elif tw == CapnSchema.TypeWhich.ENUM:
+	if tw == CapnSchema.TypeWhich.ENUM:
 		return str(CapnSchema.value_enum(dv))
-	elif tw == CapnSchema.TypeWhich.FLOAT32:
+	if tw == CapnSchema.TypeWhich.FLOAT32:
 		return str(_f32_bits(CapnSchema.value_f32(dv)))
-	elif tw == CapnSchema.TypeWhich.FLOAT64:
+	if tw == CapnSchema.TypeWhich.FLOAT64:
 		return str(_f64_bits(CapnSchema.value_f64(dv)))
-	elif tw == CapnSchema.TypeWhich.TEXT:
+	if tw == CapnSchema.TypeWhich.TEXT:
 		return _gd_string(CapnSchema.value_text(dv))
-	elif tw == CapnSchema.TypeWhich.DATA:
+	if tw == CapnSchema.TypeWhich.DATA:
 		return _data_literal(CapnSchema.value_data(dv))
 	return "0"
 
@@ -1250,15 +1250,15 @@ static func _data_literal(bytes: PackedByteArray) -> String:
 static func _elem_size_token(ew: CapnSchema.TypeWhich) -> String:
 	if ew == CapnSchema.TypeWhich.VOID:
 		return "CapnPointer.ElemSize.VOID" # List(Void): count only, zero width
-	elif ew == CapnSchema.TypeWhich.BOOL:
+	if ew == CapnSchema.TypeWhich.BOOL:
 		return "CapnPointer.ElemSize.BIT"
-	elif ew == CapnSchema.TypeWhich.INT8 or ew == CapnSchema.TypeWhich.UINT8:
+	if ew == CapnSchema.TypeWhich.INT8 or ew == CapnSchema.TypeWhich.UINT8:
 		return "CapnPointer.ElemSize.BYTE"
-	elif ew == CapnSchema.TypeWhich.INT16 or ew == CapnSchema.TypeWhich.UINT16 or ew == CapnSchema.TypeWhich.ENUM:
+	if ew == CapnSchema.TypeWhich.INT16 or ew == CapnSchema.TypeWhich.UINT16 or ew == CapnSchema.TypeWhich.ENUM:
 		return "CapnPointer.ElemSize.TWO_BYTES"
-	elif ew == CapnSchema.TypeWhich.INT32 or ew == CapnSchema.TypeWhich.UINT32 or ew == CapnSchema.TypeWhich.FLOAT32:
+	if ew == CapnSchema.TypeWhich.INT32 or ew == CapnSchema.TypeWhich.UINT32 or ew == CapnSchema.TypeWhich.FLOAT32:
 		return "CapnPointer.ElemSize.FOUR_BYTES"
-	elif ew == CapnSchema.TypeWhich.INT64 or ew == CapnSchema.TypeWhich.UINT64 or ew == CapnSchema.TypeWhich.FLOAT64:
+	if ew == CapnSchema.TypeWhich.INT64 or ew == CapnSchema.TypeWhich.UINT64 or ew == CapnSchema.TypeWhich.FLOAT64:
 		return "CapnPointer.ElemSize.EIGHT_BYTES"
 	# Text / Data (pointer elements).
 	return "CapnPointer.ElemSize.POINTER"
@@ -1269,41 +1269,41 @@ static func _elem_size_token(ew: CapnSchema.TypeWhich) -> String:
 static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, off: int, flat_by_id: Dictionary[int, String], def: String) -> String:
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "%s.get_bool(%d, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.INT8:
+	if tw == CapnSchema.TypeWhich.INT8:
 		return "%s.get_i8(%d, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.INT16:
+	if tw == CapnSchema.TypeWhich.INT16:
 		return "%s.get_i16(%d, %s)" % [recv, off * 2, def]
-	elif tw == CapnSchema.TypeWhich.INT32:
+	if tw == CapnSchema.TypeWhich.INT32:
 		return "%s.get_i32(%d, %s)" % [recv, off * 4, def]
-	elif tw == CapnSchema.TypeWhich.INT64:
+	if tw == CapnSchema.TypeWhich.INT64:
 		return "%s.get_i64(%d, %s)" % [recv, off * 8, def]
-	elif tw == CapnSchema.TypeWhich.UINT8:
+	if tw == CapnSchema.TypeWhich.UINT8:
 		return "%s.get_u8(%d, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.UINT16:
+	if tw == CapnSchema.TypeWhich.UINT16:
 		return "%s.get_u16(%d, %s)" % [recv, off * 2, def]
-	elif tw == CapnSchema.TypeWhich.UINT32:
+	if tw == CapnSchema.TypeWhich.UINT32:
 		return "%s.get_u32(%d, %s)" % [recv, off * 4, def]
-	elif tw == CapnSchema.TypeWhich.UINT64:
+	if tw == CapnSchema.TypeWhich.UINT64:
 		return "%s.get_u64(%d, %s)" % [recv, off * 8, def]
-	elif tw == CapnSchema.TypeWhich.FLOAT32:
+	if tw == CapnSchema.TypeWhich.FLOAT32:
 		return "%s.get_f32(%d, %s)" % [recv, off * 4, def]
-	elif tw == CapnSchema.TypeWhich.FLOAT64:
+	if tw == CapnSchema.TypeWhich.FLOAT64:
 		return "%s.get_f64(%d, %s)" % [recv, off * 8, def]
-	elif tw == CapnSchema.TypeWhich.ENUM:
+	if tw == CapnSchema.TypeWhich.ENUM:
 		var eflat: String = _flat_of(t, flat_by_id)
 		if eflat.is_empty():
 			return "%s.get_u16(%d, %s)" % [recv, off * 2, def]
 		return "%s.get_u16(%d, %s) as %s" % [recv, off * 2, def, eflat]
-	elif tw == CapnSchema.TypeWhich.TEXT:
+	if tw == CapnSchema.TypeWhich.TEXT:
 		return "%s.get_text(%d, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.DATA:
+	if tw == CapnSchema.TypeWhich.DATA:
 		return "%s.get_data(%d, %s)" % [recv, off, def]
-	elif tw == CapnSchema.TypeWhich.STRUCT:
+	if tw == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _struct_flat(t, flat_by_id)
 		if flat.is_empty():
 			return "null  # TODO(M6): unresolved cross-file struct"
 		return "%s.Reader.wrap(%s.get_struct(%d))" % [flat, recv, off]
-	elif tw == CapnSchema.TypeWhich.INTERFACE:
+	if tw == CapnSchema.TypeWhich.INTERFACE:
 		# Capability field: no RPC layer, so decode to the cap-table index
 		# (-1 when absent). Read-only — there's no setter (see _emit_slot_setter).
 		return "%s.get_cap_index(%d)" % [recv, off]
@@ -1322,35 +1322,35 @@ static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructRea
 		if flat.is_empty():
 			return "null  # TODO(M6): unresolved cross-file struct"
 		return "%s.Reader.wrap(lr.get_struct(i))" % flat
-	elif ew == CapnSchema.TypeWhich.TEXT:
+	if ew == CapnSchema.TypeWhich.TEXT:
 		return "lr.get_text(i)"
-	elif ew == CapnSchema.TypeWhich.DATA:
+	if ew == CapnSchema.TypeWhich.DATA:
 		return "lr.get_data(i)"
-	elif ew == CapnSchema.TypeWhich.BOOL:
+	if ew == CapnSchema.TypeWhich.BOOL:
 		return "lr.get_bool(i)"
-	elif ew == CapnSchema.TypeWhich.INT8:
+	if ew == CapnSchema.TypeWhich.INT8:
 		return "lr.get_i8(i)"
-	elif ew == CapnSchema.TypeWhich.INT16:
+	if ew == CapnSchema.TypeWhich.INT16:
 		return "lr.get_i16(i)"
-	elif ew == CapnSchema.TypeWhich.INT32:
+	if ew == CapnSchema.TypeWhich.INT32:
 		return "lr.get_i32(i)"
-	elif ew == CapnSchema.TypeWhich.INT64:
+	if ew == CapnSchema.TypeWhich.INT64:
 		return "lr.get_i64(i)"
-	elif ew == CapnSchema.TypeWhich.UINT8:
+	if ew == CapnSchema.TypeWhich.UINT8:
 		return "lr.get_u8(i)"
-	elif ew == CapnSchema.TypeWhich.UINT16:
+	if ew == CapnSchema.TypeWhich.UINT16:
 		return "lr.get_u16(i)"
-	elif ew == CapnSchema.TypeWhich.ENUM:
+	if ew == CapnSchema.TypeWhich.ENUM:
 		# Match the Array[<Enum>] container type emitted by _list_container_type.
 		var eflat: String = _flat_of(elem, flat_by_id)
 		return ("lr.get_u16(i) as %s" % eflat) if not eflat.is_empty() else "lr.get_u16(i)"
-	elif ew == CapnSchema.TypeWhich.UINT32:
+	if ew == CapnSchema.TypeWhich.UINT32:
 		return "lr.get_u32(i)"
-	elif ew == CapnSchema.TypeWhich.UINT64:
+	if ew == CapnSchema.TypeWhich.UINT64:
 		return "lr.get_u64(i)"
-	elif ew == CapnSchema.TypeWhich.FLOAT32:
+	if ew == CapnSchema.TypeWhich.FLOAT32:
 		return "lr.get_f32(i)"
-	elif ew == CapnSchema.TypeWhich.FLOAT64:
+	if ew == CapnSchema.TypeWhich.FLOAT64:
 		return "lr.get_f64(i)"
 	return "null  # TODO(M6): list elem type %d" % ew
 
@@ -1358,21 +1358,21 @@ static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructRea
 static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
 	if tw == CapnSchema.TypeWhich.BOOL:
 		return "bool"
-	elif tw == CapnSchema.TypeWhich.FLOAT32 or tw == CapnSchema.TypeWhich.FLOAT64:
+	if tw == CapnSchema.TypeWhich.FLOAT32 or tw == CapnSchema.TypeWhich.FLOAT64:
 		return "float"
-	elif tw == CapnSchema.TypeWhich.TEXT:
+	if tw == CapnSchema.TypeWhich.TEXT:
 		return "String"
-	elif tw == CapnSchema.TypeWhich.DATA:
+	if tw == CapnSchema.TypeWhich.DATA:
 		return "PackedByteArray"
-	elif tw == CapnSchema.TypeWhich.STRUCT:
+	if tw == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _struct_flat(t, flat_by_id)
 		return ("%s.Reader" % flat) if not flat.is_empty() else "Variant"
-	elif tw == CapnSchema.TypeWhich.ENUM:
+	if tw == CapnSchema.TypeWhich.ENUM:
 		# Enum at the API boundary (D10a): return the generated enum type for
 		# autocomplete; int underneath. Cross-file enum (unresolved) -> int.
 		var flat: String = _flat_of(t, flat_by_id)
 		return flat if not flat.is_empty() else "int"
-	elif tw == CapnSchema.TypeWhich.INTERFACE:
+	if tw == CapnSchema.TypeWhich.INTERFACE:
 		return "int" # cap-table index
 	# int8..uint64 -> int
 	return "int"
@@ -1625,7 +1625,7 @@ static func _find_bind_scope(t: CapnReader.StructReader) -> CapnReader.StructRea
 
 
 ## parameterIndex -> bound Type reader for the concrete bindings of `t`.
-static func _build_subst(t: CapnReader.StructReader, gen_id: int) -> Dictionary[int, CapnReader.StructReader]:
+static func _build_subst(t: CapnReader.StructReader, _gen_id: int) -> Dictionary[int, CapnReader.StructReader]:
 	var out: Dictionary[int, CapnReader.StructReader] = { }
 	var scope: CapnReader.StructReader = _find_bind_scope(t)
 	if scope == null:
@@ -1723,31 +1723,31 @@ static func _basename(flat: String) -> String:
 static func _capnp_kind_name(tw: CapnSchema.TypeWhich) -> String:
 	if tw == CapnSchema.TypeWhich.VOID:
 		return "Void"
-	elif tw == CapnSchema.TypeWhich.BOOL:
+	if tw == CapnSchema.TypeWhich.BOOL:
 		return "Bool"
-	elif tw == CapnSchema.TypeWhich.INT8:
+	if tw == CapnSchema.TypeWhich.INT8:
 		return "Int8"
-	elif tw == CapnSchema.TypeWhich.INT16:
+	if tw == CapnSchema.TypeWhich.INT16:
 		return "Int16"
-	elif tw == CapnSchema.TypeWhich.INT32:
+	if tw == CapnSchema.TypeWhich.INT32:
 		return "Int32"
-	elif tw == CapnSchema.TypeWhich.INT64:
+	if tw == CapnSchema.TypeWhich.INT64:
 		return "Int64"
-	elif tw == CapnSchema.TypeWhich.UINT8:
+	if tw == CapnSchema.TypeWhich.UINT8:
 		return "UInt8"
-	elif tw == CapnSchema.TypeWhich.UINT16:
+	if tw == CapnSchema.TypeWhich.UINT16:
 		return "UInt16"
-	elif tw == CapnSchema.TypeWhich.UINT32:
+	if tw == CapnSchema.TypeWhich.UINT32:
 		return "UInt32"
-	elif tw == CapnSchema.TypeWhich.UINT64:
+	if tw == CapnSchema.TypeWhich.UINT64:
 		return "UInt64"
-	elif tw == CapnSchema.TypeWhich.FLOAT32:
+	if tw == CapnSchema.TypeWhich.FLOAT32:
 		return "Float32"
-	elif tw == CapnSchema.TypeWhich.FLOAT64:
+	if tw == CapnSchema.TypeWhich.FLOAT64:
 		return "Float64"
-	elif tw == CapnSchema.TypeWhich.TEXT:
+	if tw == CapnSchema.TypeWhich.TEXT:
 		return "Text"
-	elif tw == CapnSchema.TypeWhich.DATA:
+	if tw == CapnSchema.TypeWhich.DATA:
 		return "Data"
 	return "Any"
 
