@@ -48,15 +48,26 @@ builders produce bytes that `capnp decode` reads back correctly.
   encoding, single + multi-segment messages, far + double-far pointers,
   default-value XOR, traversal + pointer-depth limits.
 - Schema codegen: typed `Reader`/`Builder` classes for structs, enums, nested
-  types, lists, unions and groups, field defaults.
+  types, lists (including `List(List(T))`), struct-level + group unions, named
+  groups, field + `Data` defaults, schema `const` declarations, and interface
+  (capability) fields (decode to cap-table index; serialization-only).
+- Typed returns: list getters return `Array[T]` (`Array[X.Reader]`,
+  `Array[String]`, `Array[int]`, …); enum fields return the generated enum.
+- Cross-file type references — a field of an imported type resolves to that
+  file's generated umbrella class (request all files together).
+- Generics: type-erased accessors for parameter / `AnyPointer` fields
+  (`Box(T)` → `Box`), plus monomorphized typed classes for concrete
+  instantiations (`Box(Text)` → `Box_Text` with `get_value() -> String`).
 - Reserved-name sanitization (a schema `enum Color` / field `class` won't clash
   with Godot built-ins / GDScript keywords).
-- `capnpc-gdscript` plugin so `capnp compile -o gdscript` works directly.
+- `capnpc-gdscript` plugin so `capnp compile -o gdscript` works directly, plus an
+  in-editor dock panel (capnp status, install, in-process generate).
 
 **Not yet** (tracked in [`docs/DEFERRED.md`](docs/DEFERRED.md))
 
-- Generics (`Brand` resolution), capability/RPC, cross-file imports, typed
-  `Array[T]` list returns, `Data` field defaults.
+- RPC / live capabilities (serialization-only by design). Some deferred generic
+  sub-cases (nested-generic inner emission, `inherit` scopes, generic
+  enums/interfaces), `List(AnyPointer)`, and real-Windows codegen verification.
 
 There is no RPC layer (by design — like godobuf, this is serialization only).
 Capability pointers decode to a table index so cap-bearing messages don't crash.
@@ -367,6 +378,12 @@ Enums → class-scoped `enum <Name> { MEMBER, … }`. Unions/groups →
 `get_<group>_<member>()`, `set_<group>_<member>(value)` (void members:
 `set_<group>_<member>()` with no value).
 
+Generics → the erased `Box` (type-erased `get_<f>_struct/list/text/data()`) plus
+a fully-typed `Box_Text` / `Box_Inner` / … per concrete instantiation
+(`get_value() -> String`); a branded field resolves to the mono class. Imported
+types resolve to the other file's umbrella class
+(`Common.Point` → `CommonCapnp.Point.Reader`).
+
 ## Default values
 
 Cap'n Proto stores scalars XOR'd with their schema default, so a default-valued
@@ -427,8 +444,10 @@ docs/         DEFERRED.md (tracked TODOs)
 
 ## Roadmap
 
-Tracked work and known gaps live in [`docs/DEFERRED.md`](docs/DEFERRED.md) — the
-biggest open item is generics (`Brand` resolution).
+Tracked work and known gaps live in [`docs/DEFERRED.md`](docs/DEFERRED.md). The
+big features (generics, cross-file refs, interface fields, typed returns) have
+landed; remaining items are RPC (out of scope by design) and the deferred
+generic sub-cases above.
 
 ## Credits
 
