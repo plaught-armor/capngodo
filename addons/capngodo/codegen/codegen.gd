@@ -677,7 +677,12 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 	lines.append(TAB + TAB + "func set_%s(value: %s) -> void:" % [suffix, _return_type(tw, t, flat_by_id)])
 	if disc_line != "":
 		lines.append(disc_line)
-	lines.append(TAB + TAB + TAB + _scalar_set("_b", tw, off, _default_for(f, tw)))
+	# Text/Data writes carry no XOR default (set_text/set_data ignore `def`), so
+	# skip computing the default literal for them — value_text/value_data +
+	# _gd_string/_data_literal would otherwise allocate a string the setter discards
+	# (CQ4).
+	var def: String = "" if (tw == CapnSchema.TypeWhich.TEXT or tw == CapnSchema.TypeWhich.DATA) else _default_for(f, tw)
+	lines.append(TAB + TAB + TAB + _scalar_set("_b", tw, off, def))
 
 
 ## Type-erased builder accessors for an AnyPointer / generic-parameter slot.
