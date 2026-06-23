@@ -15,19 +15,17 @@ class Cell extends RefCounted:
 		func get_v() -> int:
 			return self.get_i32(0, 0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_v(value: int) -> void:
-			_b.set_i32(0, value, 0)
+			self.set_i32(0, value, 0)
 
 class Nested extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -71,25 +69,23 @@ class Nested extends RefCounted:
 				out[i] = lr.get_cap_index(i)
 			return out
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_matrix(n: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(0, CapnPointer.ElemSize.POINTER, n)
+			return self.init_list(0, CapnPointer.ElemSize.POINTER, n)
 
 		func init_rows(n: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(1, CapnPointer.ElemSize.POINTER, n)
+			return self.init_list(1, CapnPointer.ElemSize.POINTER, n)
 
 		func init_cells(n: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(2, CapnPointer.ElemSize.POINTER, n)
+			return self.init_list(2, CapnPointer.ElemSize.POINTER, n)
 
 		# init 'handles' omitted: List(interface) is read-only (capability)
 

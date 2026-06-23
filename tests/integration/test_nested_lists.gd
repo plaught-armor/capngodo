@@ -89,7 +89,7 @@ func test_interface_list_decodes_cap_indices() -> void:
 	# cap pointers into the handles pointer list to actually exercise the
 	# ListReader.get_cap_index decode path on a populated list.
 	var nb: NestedListsCapnp.Nested.Builder = NestedListsCapnp.new_nested()
-	var lb: CapnBuilder.ListBuilder = nb._b.init_list(3, CapnPointer.ElemSize.POINTER, 2)
+	var lb: CapnBuilder.ListBuilder = nb.init_list(3, CapnPointer.ElemSize.POINTER, 2)
 	lb.arena._put(lb.seg_id, lb.first_elem_word + 0, CapnPointer.encode_cap(0))
 	lb.arena._put(lb.seg_id, lb.first_elem_word + 1, CapnPointer.encode_cap(7))
 

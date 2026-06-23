@@ -155,7 +155,25 @@ class StructBuilder extends RefCounted:
 	var ptr_word: int = 0
 	var ptr_words: int = 0
 
-	func _init(p_arena: Arena, p_seg_id: int, p_content_word: int, p_data_words: int, p_ptr_words: int) -> void:
+	func _init(
+		p_arena: Arena = null, p_seg_id: int = 0, p_content_word: int = 0,
+		p_data_words: int = 0, p_ptr_words: int = 0
+	) -> void:
+		# No-arg Builder.new() (the fill_* path) leaves fields at their var defaults
+		# (all 0 / null) and lets fill_struct's set_from do the only write — skip the
+		# redundant default set_from here. Direct construction (new_message, wrap-less
+		# callers) passes a real arena and initializes normally.
+		if p_arena != null:
+			set_from(p_arena, p_seg_id, p_content_word, p_data_words, p_ptr_words)
+
+	## In-place (re)initialization. A generated Builder that extends StructBuilder is
+	## constructed no-arg (Builder.new()) then filled via the fill_* path, so it is
+	## ONE allocation per struct/element instead of a StructBuilder plus a wrapper.
+	## The no-arg defaults on _init make Builder.new() legal; set_from carries _init's
+	## body so both paths agree.
+	func set_from(
+		p_arena: Arena, p_seg_id: int, p_content_word: int, p_data_words: int, p_ptr_words: int
+	) -> void:
 		arena = p_arena
 		seg_id = p_seg_id
 		data_word = p_content_word
@@ -212,9 +230,16 @@ class StructBuilder extends RefCounted:
 	# --- pointer setters --------------------------------------------------
 
 	func init_struct(ptr_index: int, dw: int, pw: int) -> StructBuilder:
+		var r: StructBuilder = StructBuilder.new()
+		fill_struct(ptr_index, dw, pw, r)
+		return r
+
+	## Allocate a child struct and populate `out` in place (out may be a generated
+	## Builder subclass) instead of allocating a fresh StructBuilder to wrap.
+	func fill_struct(ptr_index: int, dw: int, pw: int, out: StructBuilder) -> void:
 		var child: Vector2i = arena.allocate(dw + pw)
 		arena.point_to_struct(seg_id, ptr_word + ptr_index, child, dw, pw)
-		return StructBuilder.new(arena, child.x, child.y, dw, pw)
+		out.set_from(arena, child.x, child.y, dw, pw)
 
 	## Primitive/pointer list (non-composite). Element width comes from `code`.
 	func init_list(ptr_index: int, code: CapnPointer.ElemSize, count: int) -> ListBuilder:
@@ -375,8 +400,16 @@ class ListBuilder extends RefCounted:
 
 	## Builder for composite element i (valid only on a composite list).
 	func init_struct(i: int) -> StructBuilder:
+		var r: StructBuilder = StructBuilder.new()
+		fill_struct(i, r)
+		return r
+
+	## Populate `out` from composite element i in place (out may be a generated
+	## Builder subclass) — one allocation per element instead of StructBuilder +
+	## wrapper.
+	func fill_struct(i: int, out: StructBuilder) -> void:
 		var base_word: int = first_elem_word + i * step_words
-		return StructBuilder.new(arena, seg_id, base_word, comp_data_words, comp_ptr_words)
+		out.set_from(arena, seg_id, base_word, comp_data_words, comp_ptr_words)
 
 	## For List(Pointer) elements: allocate a struct and write its pointer at
 	## element i (e.g. List(Text) uses set_text; List(AnyStruct) uses this).

@@ -361,17 +361,20 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 			_emit_field_getter(lines, gf, flat_by_id, by_id, struct_disc, subst, subst_scope)
 	lines.append("")
 
-	# Builder.
-	lines.append(TAB + "class Builder extends RefCounted:")
-	lines.append(TAB + TAB + "var _b: CapnBuilder.StructBuilder")
-	lines.append("")
+	# Builder. Extends StructBuilder directly (not a `_b`-wrapping RefCounted): the
+	# typed Builder IS the struct view, so building a nested struct / list element
+	# fills a fresh Builder in place (CapnBuilder.fill_struct) instead of allocating
+	# a StructBuilder and then a wrapper around it — one allocation per builder.
+	lines.append(TAB + "class Builder extends CapnBuilder.StructBuilder:")
+	# wrap(): adopt an existing StructBuilder as this typed Builder (one extra copy).
+	# Public/back-compat constructor; the hot path uses fill_struct (no extra builder).
 	lines.append(TAB + TAB + "static func wrap(b: CapnBuilder.StructBuilder) -> Builder:")
 	lines.append(TAB + TAB + TAB + "var o: Builder = Builder.new()")
-	lines.append(TAB + TAB + TAB + "o._b = b")
+	lines.append(TAB + TAB + TAB + "o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)")
 	lines.append(TAB + TAB + TAB + "return o")
 	lines.append("")
 	lines.append(TAB + TAB + "func to_bytes(packed: bool = false) -> PackedByteArray:")
-	lines.append(TAB + TAB + TAB + "return CapnBuilder.to_bytes(_b, packed)")
+	lines.append(TAB + TAB + TAB + "return CapnBuilder.to_bytes(self, packed)")
 	for i: int in fields.size():
 		var sf: CapnReader.StructReader = fields.get_struct(i)
 		var ov: CapnReader.StructReader = _param_override(sf, subst, subst_scope)
@@ -732,9 +735,9 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 	# newline). Callers append it as one block; "\n".join(lines) splits it.
 	var disc_writes: PackedStringArray = PackedStringArray()
 	if outer_disc_off >= 0:
-		disc_writes.append(TAB + TAB + TAB + "_b.set_u16(%d, %d, 0)" % [outer_disc_off, outer_disc_val])
+		disc_writes.append(TAB + TAB + TAB + "self.set_u16(%d, %d, 0)" % [outer_disc_off, outer_disc_val])
 	if disc_off >= 0:
-		disc_writes.append(TAB + TAB + TAB + "_b.set_u16(%d, %d, 0)" % [disc_off, disc_val])
+		disc_writes.append(TAB + TAB + TAB + "self.set_u16(%d, %d, 0)" % [disc_off, disc_val])
 	var disc_line: String = "\n".join(disc_writes)
 
 	if tw == CapnSchema.TypeWhich.VOID:
@@ -757,7 +760,9 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 		lines.append(TAB + TAB + "func init_%s() -> %s.Builder:" % [suffix, child])
 		if not disc_line.is_empty():
 			lines.append(disc_line)
-		lines.append(TAB + TAB + TAB + "return %s.Builder.wrap(_b.init_struct(%d, %s.DATA_WORDS, %s.PTR_WORDS))" % [child, off, child, child])
+		lines.append(TAB + TAB + TAB + "var b: %s.Builder = %s.Builder.new()" % [child, child])
+		lines.append(TAB + TAB + TAB + "self.fill_struct(%d, %s.DATA_WORDS, %s.PTR_WORDS, b)" % [off, child, child])
+		lines.append(TAB + TAB + TAB + "return b")
 		return
 	if tw == CapnSchema.TypeWhich.ANY_POINTER:
 		_emit_anyptr_setter(lines, suffix, off, disc_line)
@@ -783,7 +788,7 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 	# _gd_string/_data_literal would otherwise allocate a string the setter discards
 	# (CQ4).
 	var def: String = "" if (tw == CapnSchema.TypeWhich.TEXT or tw == CapnSchema.TypeWhich.DATA) else _default_for(f, tw)
-	lines.append(TAB + TAB + TAB + _scalar_set("_b", tw, off, def))
+	lines.append(TAB + TAB + TAB + _scalar_set("self", tw, off, def))
 
 
 ## Type-erased builder accessors for an AnyPointer / generic-parameter slot.
@@ -797,27 +802,27 @@ static func _emit_anyptr_setter(lines: PackedStringArray, suffix: String, off: i
 	lines.append(TAB + TAB + "func init_%s_struct(data_words: int, ptr_words: int) -> CapnBuilder.StructBuilder:" % suffix)
 	if not disc_line.is_empty():
 		lines.append(disc_line)
-	lines.append(TAB + TAB + TAB + "return _b.init_struct(%d, data_words, ptr_words)" % off)
+	lines.append(TAB + TAB + TAB + "return self.init_struct(%d, data_words, ptr_words)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func init_%s_list(elem_size: CapnPointer.ElemSize, count: int) -> CapnBuilder.ListBuilder:" % suffix)
 	if not disc_line.is_empty():
 		lines.append(disc_line)
-	lines.append(TAB + TAB + TAB + "return _b.init_list(%d, elem_size, count)" % off)
+	lines.append(TAB + TAB + TAB + "return self.init_list(%d, elem_size, count)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func init_%s_composite_list(count: int, data_words: int, ptr_words: int) -> CapnBuilder.ListBuilder:" % suffix)
 	if not disc_line.is_empty():
 		lines.append(disc_line)
-	lines.append(TAB + TAB + TAB + "return _b.init_composite_list(%d, count, data_words, ptr_words)" % off)
+	lines.append(TAB + TAB + TAB + "return self.init_composite_list(%d, count, data_words, ptr_words)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func set_%s_text(value: String) -> void:" % suffix)
 	if not disc_line.is_empty():
 		lines.append(disc_line)
-	lines.append(TAB + TAB + TAB + "_b.set_text(%d, value)" % off)
+	lines.append(TAB + TAB + TAB + "self.set_text(%d, value)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func set_%s_data(value: PackedByteArray) -> void:" % suffix)
 	if not disc_line.is_empty():
 		lines.append(disc_line)
-	lines.append(TAB + TAB + TAB + "_b.set_data(%d, value)" % off)
+	lines.append(TAB + TAB + TAB + "self.set_data(%d, value)" % off)
 
 
 static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_line: String = "") -> void:
@@ -836,7 +841,7 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + "func init_%s(n: int) -> CapnBuilder.ListBuilder:" % fname)
 		if not disc_line.is_empty():
 			lines.append(disc_line)
-		lines.append(TAB + TAB + TAB + "return _b.init_list(%d, CapnPointer.ElemSize.POINTER, n)" % off)
+		lines.append(TAB + TAB + TAB + "return self.init_list(%d, CapnPointer.ElemSize.POINTER, n)" % off)
 		return
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var child: String = _flat_of(elem, flat_by_id)
@@ -848,11 +853,15 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + "func init_%s(n: int) -> %s:" % [fname, arr])
 		if not disc_line.is_empty():
 			lines.append(disc_line)
-		lines.append(TAB + TAB + TAB + "var lb: CapnBuilder.ListBuilder = _b.init_composite_list(%d, n, %s.DATA_WORDS, %s.PTR_WORDS)" % [off, child, child])
+		lines.append(TAB + TAB + TAB + "var lb: CapnBuilder.ListBuilder = self.init_composite_list(%d, n, %s.DATA_WORDS, %s.PTR_WORDS)" % [off, child, child])
 		lines.append(TAB + TAB + TAB + "var out: %s = []" % arr)
 		lines.append(TAB + TAB + TAB + "out.resize(n)")
 		lines.append(TAB + TAB + TAB + "for i: int in n:")
-		lines.append(TAB + TAB + TAB + TAB + "out[i] = %s.Builder.wrap(lb.init_struct(i))" % child)
+		# Element builders fill a fresh typed Builder in place (the Builder IS the
+		# struct view) — one allocation per element, not a StructBuilder plus a wrapper.
+		lines.append(TAB + TAB + TAB + TAB + "var e: %s.Builder = %s.Builder.new()" % [child, child])
+		lines.append(TAB + TAB + TAB + TAB + "lb.fill_struct(i, e)")
+		lines.append(TAB + TAB + TAB + TAB + "out[i] = e")
 		lines.append(TAB + TAB + TAB + "return out")
 		return
 	# Bulk primitive list: set the whole field from a Packed*Array, symmetric with
@@ -863,7 +872,7 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + "func set_%s(value: %s) -> void:" % [fname, pk[0]])
 		if not disc_line.is_empty():
 			lines.append(disc_line)
-		lines.append(TAB + TAB + TAB + "var lb: CapnBuilder.ListBuilder = _b.init_list(%d, %s, value.size())" % [off, _elem_size_token(ew)])
+		lines.append(TAB + TAB + TAB + "var lb: CapnBuilder.ListBuilder = self.init_list(%d, %s, value.size())" % [off, _elem_size_token(ew)])
 		lines.append(TAB + TAB + TAB + "lb.%s(value)" % pk[2])
 		return
 	# Primitive / Text / Data list -> a raw ListBuilder; caller sets elements
@@ -874,7 +883,7 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 	lines.append(TAB + TAB + "func init_%s(n: int) -> CapnBuilder.ListBuilder:" % fname)
 	if not disc_line.is_empty():
 		lines.append(disc_line)
-	lines.append(TAB + TAB + TAB + "return _b.init_list(%d, %s, n)" % [off, _elem_size_token(ew)])
+	lines.append(TAB + TAB + TAB + "return self.init_list(%d, %s, n)" % [off, _elem_size_token(ew)])
 
 
 ## Union (group) builder: per-member set_/init_ that writes the discriminant.

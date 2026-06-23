@@ -15,19 +15,17 @@ class Bag extends RefCounted:
 		func get_rows() -> CapnReader.ListReader:
 			return self.get_list(0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_rows(n: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(0, CapnPointer.ElemSize.POINTER, n)
+			return self.init_list(0, CapnPointer.ElemSize.POINTER, n)
 
 
 static func read_bag(bytes: PackedByteArray, packed: bool = false) -> Bag.Reader:

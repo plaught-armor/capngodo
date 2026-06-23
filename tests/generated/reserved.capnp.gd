@@ -31,31 +31,29 @@ class Node_ extends RefCounted:
 		func get_kind() -> Math:
 			return self.get_u16(6, 0) as Math
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_value(value: int) -> void:
-			_b.set_i32(0, value, 0)
+			self.set_i32(0, value, 0)
 
 		func set_class_(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_color(value: Color_) -> void:
-			_b.set_u16(4, value, 0)
+			self.set_u16(4, value, 0)
 
 		func set_instance_id_(value: int) -> void:
-			_b.set_i32(8, value, 0)
+			self.set_i32(8, value, 0)
 
 		func set_kind(value: Math) -> void:
-			_b.set_u16(6, value, 0)
+			self.set_u16(6, value, 0)
 
 class Holder extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -72,19 +70,19 @@ class Holder extends RefCounted:
 			self.fill_struct(0, r)
 			return r
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_child() -> Node_.Builder:
-			return Node_.Builder.wrap(_b.init_struct(0, Node_.DATA_WORDS, Node_.PTR_WORDS))
+			var b: Node_.Builder = Node_.Builder.new()
+			self.fill_struct(0, Node_.DATA_WORDS, Node_.PTR_WORDS, b)
+			return b
 
 
 static func read_node_(bytes: PackedByteArray, packed: bool = false) -> Node_.Reader:

@@ -49,47 +49,45 @@ class Entity extends RefCounted:
 		func get_state_mode_moving() -> float:
 			return self.get_f32(28, 0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_name(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_transform_pos_x(value: float) -> void:
-			_b.set_f32(0, value, 0)
+			self.set_f32(0, value, 0)
 
 		func set_transform_pos_y(value: float) -> void:
-			_b.set_f32(4, value, 0)
+			self.set_f32(4, value, 0)
 
 		func set_physics_mass(value: float) -> void:
-			_b.set_f32(8, value, 0)
+			self.set_f32(8, value, 0)
 
 		func set_physics_velocity_dx(value: float) -> void:
-			_b.set_f32(12, value, 0)
+			self.set_f32(12, value, 0)
 
 		func set_physics_velocity_dy(value: float) -> void:
-			_b.set_f32(16, value, 0)
+			self.set_f32(16, value, 0)
 
 		func set_physics_label(value: String) -> void:
-			_b.set_text(1, value)
+			self.set_text(1, value)
 
 		func set_state_hp(value: int) -> void:
-			_b.set_i32(20, value, 0)
+			self.set_i32(20, value, 0)
 
 		func set_state_mode_idle() -> void:
-			_b.set_u16(24, 0, 0)
+			self.set_u16(24, 0, 0)
 
 		func set_state_mode_moving(value: float) -> void:
-			_b.set_u16(24, 1, 0)
-			_b.set_f32(28, value, 0)
+			self.set_u16(24, 1, 0)
+			self.set_f32(28, value, 0)
 
 class Outer extends RefCounted:
 	const DATA_WORDS: int = 2
@@ -116,27 +114,25 @@ class Outer extends RefCounted:
 		func get_box_h() -> int:
 			return self.get_i32(8, 0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_empty() -> void:
-			_b.set_u16(0, 0, 0)
+			self.set_u16(0, 0, 0)
 
 		func set_box_w(value: int) -> void:
-			_b.set_u16(0, 1, 0)
-			_b.set_i32(4, value, 0)
+			self.set_u16(0, 1, 0)
+			self.set_i32(4, value, 0)
 
 		func set_box_h(value: int) -> void:
-			_b.set_u16(0, 1, 0)
-			_b.set_i32(8, value, 0)
+			self.set_u16(0, 1, 0)
+			self.set_i32(8, value, 0)
 
 
 static func read_entity(bytes: PackedByteArray, packed: bool = false) -> Entity.Reader:

@@ -55,47 +55,47 @@ class Person extends RefCounted:
 		func is_employment_self_employed() -> bool:
 			return self.get_u16(4, 0) == 3
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_id(value: int) -> void:
-			_b.set_u32(0, value, 0)
+			self.set_u32(0, value, 0)
 
 		func set_name(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_email(value: String) -> void:
-			_b.set_text(1, value)
+			self.set_text(1, value)
 
 		func init_phones(n: int) -> Array[Person_PhoneNumber.Builder]:
-			var lb: CapnBuilder.ListBuilder = _b.init_composite_list(2, n, Person_PhoneNumber.DATA_WORDS, Person_PhoneNumber.PTR_WORDS)
+			var lb: CapnBuilder.ListBuilder = self.init_composite_list(2, n, Person_PhoneNumber.DATA_WORDS, Person_PhoneNumber.PTR_WORDS)
 			var out: Array[Person_PhoneNumber.Builder] = []
 			out.resize(n)
 			for i: int in n:
-				out[i] = Person_PhoneNumber.Builder.wrap(lb.init_struct(i))
+				var e: Person_PhoneNumber.Builder = Person_PhoneNumber.Builder.new()
+				lb.fill_struct(i, e)
+				out[i] = e
 			return out
 
 		func set_employment_unemployed() -> void:
-			_b.set_u16(4, 0, 0)
+			self.set_u16(4, 0, 0)
 
 		func set_employment_employer(value: String) -> void:
-			_b.set_u16(4, 1, 0)
-			_b.set_text(3, value)
+			self.set_u16(4, 1, 0)
+			self.set_text(3, value)
 
 		func set_employment_school(value: String) -> void:
-			_b.set_u16(4, 2, 0)
-			_b.set_text(3, value)
+			self.set_u16(4, 2, 0)
+			self.set_text(3, value)
 
 		func set_employment_self_employed() -> void:
-			_b.set_u16(4, 3, 0)
+			self.set_u16(4, 3, 0)
 
 class Person_PhoneNumber extends RefCounted:
 	const DATA_WORDS: int = 1
@@ -113,22 +113,20 @@ class Person_PhoneNumber extends RefCounted:
 		func get_type() -> Person_PhoneNumber_Type:
 			return self.get_u16(0, 0) as Person_PhoneNumber_Type
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_number(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_type(value: Person_PhoneNumber_Type) -> void:
-			_b.set_u16(0, value, 0)
+			self.set_u16(0, value, 0)
 
 class AddressBook extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -150,23 +148,23 @@ class AddressBook extends RefCounted:
 				out[i] = r
 			return out
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_people(n: int) -> Array[Person.Builder]:
-			var lb: CapnBuilder.ListBuilder = _b.init_composite_list(0, n, Person.DATA_WORDS, Person.PTR_WORDS)
+			var lb: CapnBuilder.ListBuilder = self.init_composite_list(0, n, Person.DATA_WORDS, Person.PTR_WORDS)
 			var out: Array[Person.Builder] = []
 			out.resize(n)
 			for i: int in n:
-				out[i] = Person.Builder.wrap(lb.init_struct(i))
+				var e: Person.Builder = Person.Builder.new()
+				lb.fill_struct(i, e)
+				out[i] = e
 			return out
 
 

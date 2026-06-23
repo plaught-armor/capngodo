@@ -18,19 +18,17 @@ class Session extends RefCounted:
 		func get_greeter() -> int:
 			return self.get_cap_index(0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_id(value: int) -> void:
-			_b.set_u32(0, value, 0)
+			self.set_u32(0, value, 0)
 
 		# capability 'greeter' is read-only (serialization only, no RPC)
 
@@ -62,26 +60,24 @@ class Event extends RefCounted:
 		func get_count() -> int:
 			return self.get_u16(2, 0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_none() -> void:
-			_b.set_u16(0, 0, 0)
+			self.set_u16(0, 0, 0)
 
 		func set_handler() -> void:  # selects this arm; the capability stays unset (no RPC)
-			_b.set_u16(0, 1, 0)
+			self.set_u16(0, 1, 0)
 
 		func set_count(value: int) -> void:
-			_b.set_u16(0, 2, 0)
-			_b.set_u16(2, value, 0)
+			self.set_u16(0, 2, 0)
+			self.set_u16(2, value, 0)
 
 
 static func read_session(bytes: PackedByteArray, packed: bool = false) -> Session.Reader:

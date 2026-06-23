@@ -17,19 +17,19 @@ class Outer extends RefCounted:
 			self.fill_struct(0, r)
 			return r
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_inner() -> Outer_Inner.Builder:
-			return Outer_Inner.Builder.wrap(_b.init_struct(0, Outer_Inner.DATA_WORDS, Outer_Inner.PTR_WORDS))
+			var b: Outer_Inner.Builder = Outer_Inner.Builder.new()
+			self.fill_struct(0, Outer_Inner.DATA_WORDS, Outer_Inner.PTR_WORDS, b)
+			return b
 
 class Outer_Inner extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -59,34 +59,32 @@ class Outer_Inner extends RefCounted:
 		func get_label() -> String:
 			return self.get_text(1, "")
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_value_struct(data_words: int, ptr_words: int) -> CapnBuilder.StructBuilder:
-			return _b.init_struct(0, data_words, ptr_words)
+			return self.init_struct(0, data_words, ptr_words)
 
 		func init_value_list(elem_size: CapnPointer.ElemSize, count: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(0, elem_size, count)
+			return self.init_list(0, elem_size, count)
 
 		func init_value_composite_list(count: int, data_words: int, ptr_words: int) -> CapnBuilder.ListBuilder:
-			return _b.init_composite_list(0, count, data_words, ptr_words)
+			return self.init_composite_list(0, count, data_words, ptr_words)
 
 		func set_value_text(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_value_data(value: PackedByteArray) -> void:
-			_b.set_data(0, value)
+			self.set_data(0, value)
 
 		func set_label(value: String) -> void:
-			_b.set_text(1, value)
+			self.set_text(1, value)
 
 class Use extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -103,19 +101,19 @@ class Use extends RefCounted:
 			self.fill_struct(0, r)
 			return r
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_o() -> Outer_Text.Builder:
-			return Outer_Text.Builder.wrap(_b.init_struct(0, Outer_Text.DATA_WORDS, Outer_Text.PTR_WORDS))
+			var b: Outer_Text.Builder = Outer_Text.Builder.new()
+			self.fill_struct(0, Outer_Text.DATA_WORDS, Outer_Text.PTR_WORDS, b)
+			return b
 
 class Outer_Text extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -132,19 +130,19 @@ class Outer_Text extends RefCounted:
 			self.fill_struct(0, r)
 			return r
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_inner() -> Outer_Inner_Text.Builder:
-			return Outer_Inner_Text.Builder.wrap(_b.init_struct(0, Outer_Inner_Text.DATA_WORDS, Outer_Inner_Text.PTR_WORDS))
+			var b: Outer_Inner_Text.Builder = Outer_Inner_Text.Builder.new()
+			self.fill_struct(0, Outer_Inner_Text.DATA_WORDS, Outer_Inner_Text.PTR_WORDS, b)
+			return b
 
 class Outer_Inner_Text extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -162,22 +160,20 @@ class Outer_Inner_Text extends RefCounted:
 		func get_label() -> String:
 			return self.get_text(1, "")
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_value(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_label(value: String) -> void:
-			_b.set_text(1, value)
+			self.set_text(1, value)
 
 
 static func read_outer(bytes: PackedByteArray, packed: bool = false) -> Outer.Reader:
