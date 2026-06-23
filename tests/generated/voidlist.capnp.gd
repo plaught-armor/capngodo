@@ -1,6 +1,6 @@
 class_name VoidlistCapnp extends RefCounted
 
-## GENERATED from tests/golden/voidlist.capnp by capnpc-gdscript — do not edit.
+## GENERATED from voidlist.capnp by capnpc-gdscript — do not edit.
 
 class Pings extends RefCounted:
 	const DATA_WORDS: int = 0

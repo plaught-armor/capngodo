@@ -1,6 +1,6 @@
 class_name GenericCapnp extends RefCounted
 
-## GENERATED from tests/golden/generic.capnp by capnpc-gdscript — do not edit.
+## GENERATED from generic.capnp by capnpc-gdscript — do not edit.
 
 class Inner extends RefCounted:
 	const DATA_WORDS: int = 1

@@ -1,6 +1,6 @@
 class_name DefaultsCapnp extends RefCounted
 
-## GENERATED from tests/golden/defaults.capnp by capnpc-gdscript — do not edit.
+## GENERATED from defaults.capnp by capnpc-gdscript — do not edit.
 
 enum Shade { RED, GREEN, BLUE }
 

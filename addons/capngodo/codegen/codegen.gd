@@ -186,7 +186,10 @@ static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("class_name %s extends RefCounted" % _umbrella_class(fname))
 	lines.append("")
-	lines.append("## GENERATED from %s by capnpc-gdscript — do not edit." % fname)
+	# Basename only — the header must not depend on how capnp was invoked (bare
+	# `defaults.capnp`, `tests/golden/defaults.capnp`, or an absolute path all
+	# produce the same comment), so the CLI-golden test matches regardless of cwd.
+	lines.append("## GENERATED from %s by capnpc-gdscript — do not edit." % fname.get_file())
 	lines.append("")
 
 	# Enums first (class-scoped), then schema-level consts, then struct classes.

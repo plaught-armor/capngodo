@@ -1,6 +1,6 @@
 class_name CapabilityCapnp extends RefCounted
 
-## GENERATED from tests/golden/capability.capnp by capnpc-gdscript — do not edit.
+## GENERATED from capability.capnp by capnpc-gdscript — do not edit.
 
 class Session extends RefCounted:
 	const DATA_WORDS: int = 1
