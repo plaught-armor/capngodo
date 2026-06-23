@@ -432,7 +432,7 @@ static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructRea
 	if gnode != null:
 		if is_struct_arm:
 			_emit_is_arm(lines, fname, struct_disc, CapnSchema.field_discriminant_value(f))
-		_emit_union_getters(lines, fname, gnode, flat_by_id, subst, subst_scope)
+		_emit_union_getters(lines, fname, gnode, flat_by_id, by_id, subst, subst_scope)
 		return
 	if CapnSchema.field_which(f) == CapnSchema.FieldWhich.GROUP:
 		var named: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(f))
@@ -514,7 +514,10 @@ static func _emit_anyptr_getter(lines: PackedStringArray, suffix: String, off: i
 ## Union (group) reader: <group>_which() + per-member is_/get_ accessors.
 ## subst/subst_scope (CG1d): a union arm that is a generic param slot resolves to
 ## the bound type.
-static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], subst: Dictionary[int, CapnReader.StructReader] = { }, subst_scope: int = 0) -> void:
+## A group arm (CG11) is flattened past its is_<arm>() selector: a named-group arm
+## gets get_<arm>_<field>(); a union-group arm gets a nested <arm>_which() + is_/
+## get_ — all sharing the parent layout, so reads need no discriminant threading.
+static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], subst: Dictionary[int, CapnReader.StructReader] = { }, subst_scope: int = 0) -> void:
 	var disc: int = _disc_byte(gnode)
 	lines.append("")
 	lines.append(TAB + TAB + "func %s_which() -> int:" % gsnake)
@@ -522,12 +525,26 @@ static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode:
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
 		var m: CapnReader.StructReader = members.get_struct(i)
-		var mname: String = _safe_member(_snake(CapnSchema.field_name(m)))
+		var mfull: String = "%s_%s" % [gsnake, _safe_member(_snake(CapnSchema.field_name(m)))]
 		lines.append("")
-		lines.append(TAB + TAB + "func is_%s_%s() -> bool:" % [gsnake, mname])
+		lines.append(TAB + TAB + "func is_%s() -> bool:" % mfull)
 		lines.append(TAB + TAB + TAB + "return _r.get_u16(%d, 0) == %d" % [disc, CapnSchema.field_discriminant_value(m)])
 		if CapnSchema.field_which(m) == CapnSchema.FieldWhich.SLOT:
-			_emit_slot_getter(lines, "%s_%s" % [gsnake, mname], m, flat_by_id, _param_override(m, subst, subst_scope))
+			_emit_slot_getter(lines, mfull, m, flat_by_id, _param_override(m, subst, subst_scope))
+			continue
+		# CG11: group arm of this union. is_<arm>() above selects it; flatten the
+		# group's fields (or its nested union) the same way a struct-level group arm
+		# does — the layout is shared, so reads carry no discriminant.
+		var un: CapnReader.StructReader = _union_node(m, by_id)
+		if un != null:
+			_emit_union_getters(lines, mfull, un, flat_by_id, by_id, subst, subst_scope)
+		else:
+			var sub: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(m))
+			if sub == null:
+				lines.append("")
+				lines.append(TAB + TAB + "# TODO: group arm '%s' (unresolved cross-file type)" % mfull)
+			else:
+				_emit_named_group_getters(lines, mfull, sub, flat_by_id, by_id, subst, subst_scope)
 
 
 ## Named (non-discriminated) group reader: a group is a sub-namespace whose
@@ -541,7 +558,7 @@ static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, 
 		var full: String = "%s_%s" % [prefix, _safe_member(_snake(CapnSchema.field_name(m)))]
 		var un: CapnReader.StructReader = _union_node(m, by_id)
 		if un != null:
-			_emit_union_getters(lines, full, un, flat_by_id, subst, subst_scope)
+			_emit_union_getters(lines, full, un, flat_by_id, by_id, subst, subst_scope)
 		elif CapnSchema.field_which(m) == CapnSchema.FieldWhich.GROUP:
 			var sub: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(m))
 			if sub == null:
@@ -612,9 +629,9 @@ static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructRea
 		# this group on the outer union. Otherwise the inner setters alone leave
 		# the outer which() at its zero default.
 		if struct_disc >= 0 and CapnSchema.field_in_union(f):
-			_emit_union_setters(lines, fname, gnode, flat_by_id, struct_disc, CapnSchema.field_discriminant_value(f), subst, subst_scope)
+			_emit_union_setters(lines, fname, gnode, flat_by_id, by_id, struct_disc, CapnSchema.field_discriminant_value(f), subst, subst_scope)
 		else:
-			_emit_union_setters(lines, fname, gnode, flat_by_id, -1, 0, subst, subst_scope)
+			_emit_union_setters(lines, fname, gnode, flat_by_id, by_id, -1, 0, subst, subst_scope)
 		return
 	if CapnSchema.field_which(f) == CapnSchema.FieldWhich.GROUP:
 		var named: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(f))
@@ -791,16 +808,37 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 ## When the group is itself a struct-level union arm, outer_disc_off/val are
 ## threaded to each member setter so it also selects this group on the outer
 ## union (CG4).
-static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], outer_disc_off: int = -1, outer_disc_val: int = 0, subst: Dictionary[int, CapnReader.StructReader] = { }, subst_scope: int = 0) -> void:
+## A group arm (CG11) flattens like a slot arm, but its leaf setters carry this
+## union's discriminant as their OUTER write (selecting any leaf selects the arm).
+## Bounded: a group arm whose union is itself a struct-level arm (outer_disc_off
+## >= 0) would need three discriminant writes per leaf — beyond the two
+## _emit_slot_setter carries — so it degrades to a loud TODO (reader still works).
+static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], outer_disc_off: int = -1, outer_disc_val: int = 0, subst: Dictionary[int, CapnReader.StructReader] = { }, subst_scope: int = 0) -> void:
 	var disc: int = _disc_byte(gnode)
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
 		var m: CapnReader.StructReader = members.get_struct(i)
-		if CapnSchema.field_which(m) != CapnSchema.FieldWhich.SLOT:
-			lines.append("")
-			lines.append(TAB + TAB + "# TODO(M6): nested group union member '%s'" % _snake(CapnSchema.field_name(m)))
+		var mfull: String = "%s_%s" % [gsnake, _safe_member(_snake(CapnSchema.field_name(m)))]
+		if CapnSchema.field_which(m) == CapnSchema.FieldWhich.SLOT:
+			_emit_slot_setter(lines, mfull, m, flat_by_id, disc, CapnSchema.field_discriminant_value(m), outer_disc_off, outer_disc_val, _param_override(m, subst, subst_scope))
 			continue
-		_emit_slot_setter(lines, "%s_%s" % [gsnake, _safe_member(_snake(CapnSchema.field_name(m)))], m, flat_by_id, disc, CapnSchema.field_discriminant_value(m), outer_disc_off, outer_disc_val, _param_override(m, subst, subst_scope))
+		# CG11: group arm. Its leaves must select this arm — write this union's
+		# discriminant. A third (struct-level) discriminant can't be carried, so
+		# bound to the case where this union is not itself a struct-level arm.
+		if outer_disc_off >= 0:
+			lines.append("")
+			lines.append(TAB + TAB + "# TODO(M6): group arm '%s' under a struct-level union (3-level discriminant)" % mfull)
+			continue
+		var un: CapnReader.StructReader = _union_node(m, by_id)
+		if un != null:
+			_emit_union_setters(lines, mfull, un, flat_by_id, by_id, disc, CapnSchema.field_discriminant_value(m), subst, subst_scope)
+		else:
+			var sub: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(m))
+			if sub == null:
+				lines.append("")
+				lines.append(TAB + TAB + "# TODO: group arm '%s' (unresolved cross-file type)" % mfull)
+			else:
+				_emit_named_group_setters(lines, mfull, sub, flat_by_id, by_id, disc, CapnSchema.field_discriminant_value(m), subst, subst_scope)
 
 
 ## Named (non-discriminated) group builder: mirror of _emit_named_group_getters.
@@ -815,7 +853,7 @@ static func _emit_named_group_setters(lines: PackedStringArray, prefix: String, 
 		var full: String = "%s_%s" % [prefix, _safe_member(_snake(CapnSchema.field_name(m)))]
 		var un: CapnReader.StructReader = _union_node(m, by_id)
 		if un != null:
-			_emit_union_setters(lines, full, un, flat_by_id, outer_disc_off, outer_disc_val, subst, subst_scope)
+			_emit_union_setters(lines, full, un, flat_by_id, by_id, outer_disc_off, outer_disc_val, subst, subst_scope)
 		elif CapnSchema.field_which(m) == CapnSchema.FieldWhich.GROUP:
 			var sub: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(m))
 			if sub == null:
