@@ -1,5 +1,5 @@
-class_name CapnReader extends RefCounted
-
+class_name CapnReader
+extends RefCounted
 ## The read side of the codec: Message + StructReader + ListReader, kept in ONE
 ## file as inner classes because they form a mutual type cycle (a message yields
 ## struct readers, a struct reader yields list readers, a list reader yields
@@ -34,10 +34,10 @@ static func _make_message(segs: CapnSegments, limits: CapnLimits) -> Message:
 	msg.limits = limits if limits != null else CapnLimits.new()
 	return msg
 
-
 # =========================================================================
 # Message — segments + limits + pointer-following + traversal accounting.
 # =========================================================================
+
 
 class Message extends RefCounted:
 	var segments: CapnSegments = null
@@ -53,6 +53,16 @@ class Message extends RefCounted:
 	# per-pointer-dereference alloc on the decode hot path.
 	var _scratch: CapnTarget = CapnTarget.new()
 
+	# Reused scratch pointers for the decode hot path — every follow() decodes a
+	# pointer word into one of these instead of allocating a fresh CapnPointer.
+	# Two slots: a far pointer's landing pad needs the original (drained to locals)
+	# plus an inner + tag word live at once, so the double-far arm uses both _ptr_a
+	# (inner) and _ptr_b (tag). Same single-threaded, drain-before-next-decode
+	# safety as _scratch above.
+	var _ptr_a: CapnPointer = CapnPointer.new()
+	var _ptr_b: CapnPointer = CapnPointer.new()
+
+
 	# Reset the scratch to a null target and return it — used on every
 	# null/out-of-bounds/limit path in place of CapnTarget.new().
 	func null_target() -> CapnTarget:
@@ -60,10 +70,20 @@ class Message extends RefCounted:
 		_scratch.is_cap = false
 		return _scratch
 
+
+	# Decode the pointer word at (seg_id, word_off) into the shared scratch and
+	# return it — lets ListReader.from_target read a composite tag without its own
+	# alloc. Only safe once follow() has drained its decode into a CapnTarget.
+	func decode_ptr(seg_id: int, word_off: int) -> CapnPointer:
+		CapnPointer.decode_at_into(_ptr_a, segments.segments[seg_id], word_off * WORD_BYTES)
+		return _ptr_a
+
+
 	func get_root() -> StructReader:
 		var r: StructReader = StructReader.new()
 		fill_root(r)
 		return r
+
 
 	## Populate `out` (a StructReader or a generated Reader subclass) from the root
 	## pointer, instead of allocating a fresh reader to wrap. Lets a typed Reader
@@ -81,18 +101,21 @@ class Message extends RefCounted:
 			return
 		out.set_from_target(self, target, limits.pointer_depth_limit)
 
+
 	## Follow the pointer word at (seg_id, ptr_word_off). Resolves far pointers.
 	## Always returns a CapnTarget (never null); is_null=true on null/error.
 	func follow(seg_id: int, ptr_word_off: int) -> CapnTarget:
 		if not segments.words_in_bounds(seg_id, ptr_word_off, 1):
 			fail("pointer word out of bounds (seg %d word %d)" % [seg_id, ptr_word_off])
 			return null_target()
-		var ptr: CapnPointer = CapnPointer.decode_at(segments.segments[seg_id], ptr_word_off * WORD_BYTES)
+		var ptr: CapnPointer = _ptr_a
+		CapnPointer.decode_at_into(ptr, segments.segments[seg_id], ptr_word_off * WORD_BYTES)
 		if ptr.is_null:
-			return null_target()  # null target (not an error)
+			return null_target() # null target (not an error)
 		if ptr.kind == CapnPointer.Kind.FAR:
 			return _follow_far(ptr)
 		return _target_from_pointer(seg_id, ptr_word_off + 1 + ptr.offset, ptr)
+
 
 	func _follow_far(far: CapnPointer) -> CapnTarget:
 		var seg: int = far.far_segment_id
@@ -102,8 +125,12 @@ class Message extends RefCounted:
 			if not segments.words_in_bounds(seg, pad_word, 2):
 				fail("double-far landing pad out of bounds")
 				return null_target()
-			var inner: CapnPointer = CapnPointer.decode_at(segments.segments[seg], pad_word * WORD_BYTES)
-			var tag: CapnPointer = CapnPointer.decode_at(segments.segments[seg], (pad_word + 1) * WORD_BYTES)
+			# far (== _ptr_a) is drained to seg/pad_word above; reuse it for inner,
+			# _ptr_b for tag — both stay live through _target_from_pointer below.
+			var inner: CapnPointer = _ptr_a
+			CapnPointer.decode_at_into(inner, segments.segments[seg], pad_word * WORD_BYTES)
+			var tag: CapnPointer = _ptr_b
+			CapnPointer.decode_at_into(tag, segments.segments[seg], (pad_word + 1) * WORD_BYTES)
 			if inner.kind != CapnPointer.Kind.FAR or inner.far_two_word:
 				fail("double-far inner word is not a single far pointer")
 				return null_target()
@@ -113,11 +140,13 @@ class Message extends RefCounted:
 		if not segments.words_in_bounds(seg, pad_word, 1):
 			fail("far landing pad out of bounds")
 			return null_target()
-		var pad: CapnPointer = CapnPointer.decode_at(segments.segments[seg], pad_word * WORD_BYTES)
+		var pad: CapnPointer = _ptr_a
+		CapnPointer.decode_at_into(pad, segments.segments[seg], pad_word * WORD_BYTES)
 		if pad.kind == CapnPointer.Kind.FAR:
 			fail("far landing pad points to another far pointer")
 			return null_target()
 		return _target_from_pointer(seg, pad_word + 1 + pad.offset, pad)
+
 
 	func _target_from_pointer(seg_id: int, content_word: int, ptr: CapnPointer) -> CapnTarget:
 		var t: CapnTarget = _scratch
@@ -153,6 +182,7 @@ class Message extends RefCounted:
 		t.is_null = false
 		return t
 
+
 	## Bounds-check the object span and charge it to the traversal counter.
 	func _check(seg_id: int, word_off: int, span_words: int) -> bool:
 		if not segments.words_in_bounds(seg_id, word_off, span_words):
@@ -165,22 +195,25 @@ class Message extends RefCounted:
 			return false
 		return true
 
+
 	## Physical words occupied by a non-composite list body.
 	static func _list_body_words(code: CapnPointer.ElemSize, count: int) -> int:
 		if code == CapnPointer.ElemSize.VOID:
 			return 0
 		if code == CapnPointer.ElemSize.BIT:
 			@warning_ignore("integer_division")
-			var bit_words: int = (count + 63) / 64  # ceil(count bits / 64)
+			var bit_words: int = (count + 63) / 64 # ceil(count bits / 64)
 			return bit_words
 		var elem_bytes: int = CapnPointer.elem_size_bytes(code)
 		@warning_ignore("integer_division")
 		var body_words: int = (count * elem_bytes + WORD_BYTES - 1) / WORD_BYTES
 		return body_words
 
+
 	func fail(message: String) -> void:
 		had_error = true
 		push_error("CapnReader: %s" % message)
+
 
 	## Decode a text/data target straight off the CapnTarget, skipping the
 	## throwaway ListReader that to_text()/to_data() would otherwise need. Text
@@ -193,20 +226,25 @@ class Message extends RefCounted:
 		if t.elem_size_code == CapnPointer.ElemSize.COMPOSITE:
 			return ListReader.from_target(self, t, 0).to_text()
 		return CapnTextData.text_from(
-			segments.segments[t.seg_id], t.content_word * WORD_BYTES, t.elem_count
+			segments.segments[t.seg_id],
+			t.content_word * WORD_BYTES,
+			t.elem_count,
 		)
+
 
 	func data_from_target(t: CapnTarget) -> PackedByteArray:
 		if t.elem_size_code == CapnPointer.ElemSize.COMPOSITE:
 			return ListReader.from_target(self, t, 0).to_data()
 		return CapnTextData.data_from(
-			segments.segments[t.seg_id], t.content_word * WORD_BYTES, t.elem_count
+			segments.segments[t.seg_id],
+			t.content_word * WORD_BYTES,
+			t.elem_count,
 		)
-
 
 # =========================================================================
 # StructReader — data + pointer section view (default-XOR primitives).
 # =========================================================================
+
 
 class StructReader extends RefCounted:
 	const WORD_BYTES: int = 8
@@ -220,47 +258,73 @@ class StructReader extends RefCounted:
 	var msg: Message = null
 	var seg_id: int = 0
 	var data_byte_off: int = 0
-	var data_bytes: int = 0  # data section length in BYTES (supports sub-word upgrade)
+	var data_bytes: int = 0 # data section length in BYTES (supports sub-word upgrade)
 	var ptr_word: int = 0
 	var ptr_words: int = 0
 	# Steps still allowed below this reader: a child gets depth_remaining - 1,
 	# and a follow fails once it would go below 0 (exactly pointer_depth_limit deep).
 	var depth_remaining: int = 0
 
+
 	static func _make_scratch(n: int) -> PackedByteArray:
 		var b: PackedByteArray = PackedByteArray()
 		b.resize(n)
 		return b
+
 
 	static func from_target(msg: Message, t: CapnTarget, depth_remaining: int) -> StructReader:
 		var r: StructReader = StructReader.new()
 		r.set_from_target(msg, t, depth_remaining)
 		return r
 
+
 	## Explicit byte/word offsets — used by ListReader for composite elements
 	## (word-aligned) and upgraded primitive elements (sub-word).
 	static func from_inline(
-		msg: Message, seg_id: int, data_byte_off: int, data_bytes: int,
-		ptr_word: int, ptr_words: int, depth_remaining: int
+			msg: Message,
+			seg_id: int,
+			data_byte_off: int,
+			data_bytes: int,
+			ptr_word: int,
+			ptr_words: int,
+			depth_remaining: int,
 	) -> StructReader:
 		var r: StructReader = StructReader.new()
 		r.set_from_inline(
-			msg, seg_id, data_byte_off, data_bytes, ptr_word, ptr_words, depth_remaining
+			msg,
+			seg_id,
+			data_byte_off,
+			data_bytes,
+			ptr_word,
+			ptr_words,
+			depth_remaining,
 		)
 		return r
+
 
 	## In-place population of an existing reader (or a generated Reader subclass)
 	## from a target. The fill_* path uses this so a typed Reader that extends
 	## StructReader is a single allocation instead of StructReader + a wrapper.
 	func set_from_target(p_msg: Message, t: CapnTarget, p_depth: int) -> void:
 		set_from_inline(
-			p_msg, t.seg_id, t.content_word * WORD_BYTES, t.data_words * WORD_BYTES,
-			t.content_word + t.data_words, t.ptr_words, p_depth
+			p_msg,
+			t.seg_id,
+			t.content_word * WORD_BYTES,
+			t.data_words * WORD_BYTES,
+			t.content_word + t.data_words,
+			t.ptr_words,
+			p_depth,
 		)
 
+
 	func set_from_inline(
-		p_msg: Message, p_seg_id: int, p_data_byte_off: int, p_data_bytes: int,
-		p_ptr_word: int, p_ptr_words: int, p_depth: int
+			p_msg: Message,
+			p_seg_id: int,
+			p_data_byte_off: int,
+			p_data_bytes: int,
+			p_ptr_word: int,
+			p_ptr_words: int,
+			p_depth: int,
 	) -> void:
 		msg = p_msg
 		seg_id = p_seg_id
@@ -270,26 +334,31 @@ class StructReader extends RefCounted:
 		ptr_words = p_ptr_words
 		depth_remaining = p_depth
 
+
 	## Zero-size reader: every primitive returns its default, every pointer null.
 	static func empty(msg: Message) -> StructReader:
 		var r: StructReader = StructReader.new()
 		r.msg = msg
 		return r
 
+
 	func get_u8(byte_off: int, default_value: int) -> int:
 		if not _in_data(byte_off, 1):
 			return default_value
 		return _buf().decode_u8(data_byte_off + byte_off) ^ default_value
+
 
 	func get_u16(byte_off: int, default_value: int) -> int:
 		if not _in_data(byte_off, 2):
 			return default_value
 		return _buf().decode_u16(data_byte_off + byte_off) ^ default_value
 
+
 	func get_u32(byte_off: int, default_value: int) -> int:
 		if not _in_data(byte_off, 4):
 			return default_value
 		return _buf().decode_u32(data_byte_off + byte_off) ^ default_value
+
 
 	func get_u64(byte_off: int, default_value: int) -> int:
 		# XOR on the i64 bit pattern; caller treats the result as the stored bits.
@@ -297,11 +366,13 @@ class StructReader extends RefCounted:
 			return default_value
 		return _buf().decode_u64(data_byte_off + byte_off) ^ default_value
 
+
 	func get_i8(byte_off: int, default_value: int) -> int:
 		if not _in_data(byte_off, 1):
 			return default_value
 		var raw: int = _buf().decode_u8(data_byte_off + byte_off) ^ (default_value & 0xff)
 		return raw - 0x100 if raw >= 0x80 else raw
+
 
 	func get_i16(byte_off: int, default_value: int) -> int:
 		if not _in_data(byte_off, 2):
@@ -309,16 +380,19 @@ class StructReader extends RefCounted:
 		var raw: int = _buf().decode_u16(data_byte_off + byte_off) ^ (default_value & 0xffff)
 		return raw - 0x10000 if raw >= 0x8000 else raw
 
+
 	func get_i32(byte_off: int, default_value: int) -> int:
 		if not _in_data(byte_off, 4):
 			return default_value
 		var raw: int = _buf().decode_u32(data_byte_off + byte_off) ^ (default_value & 0xffffffff)
 		return raw - 0x100000000 if raw >= 0x80000000 else raw
 
+
 	func get_i64(byte_off: int, default_value: int) -> int:
 		if not _in_data(byte_off, 8):
 			return default_value
 		return _buf().decode_u64(data_byte_off + byte_off) ^ default_value
+
 
 	## Float getters take the default as its IEEE bit pattern (u32/u64), XOR on
 	## bits, then reinterpret — float defaults mask on the bit pattern, not the
@@ -330,12 +404,14 @@ class StructReader extends RefCounted:
 		_f32_scratch.encode_u32(0, bits & 0xFFFFFFFF)
 		return _f32_scratch.decode_float(0)
 
+
 	func get_f64(byte_off: int, default_bits: int) -> float:
 		var bits: int = default_bits
 		if _in_data(byte_off, 8):
 			bits = _buf().decode_u64(data_byte_off + byte_off) ^ default_bits
 		_f64_scratch.encode_u64(0, bits)
 		return _f64_scratch.decode_double(0)
+
 
 	func get_bool(bit_off: int, default_bit: bool) -> bool:
 		@warning_ignore("integer_division")
@@ -344,15 +420,18 @@ class StructReader extends RefCounted:
 		if not _in_data(byte_off, 1):
 			return default_bit
 		var wire_bit: bool = (_buf().decode_u8(data_byte_off + byte_off) & (1 << bit_in_byte)) != 0
-		return wire_bit != default_bit  # XOR for bools
+		return wire_bit != default_bit # XOR for bools
+
 
 	func has_ptr(ptr_index: int) -> bool:
 		return not _follow_ptr(ptr_index).is_null
+
 
 	func get_struct(ptr_index: int) -> StructReader:
 		var r: StructReader = StructReader.new()
 		fill_struct(ptr_index, r)
 		return r
+
 
 	## Populate `out` from the struct pointer at `ptr_index` (or leave it a zero-size
 	## reader on null/non-struct), instead of allocating. Generated typed Readers
@@ -366,23 +445,27 @@ class StructReader extends RefCounted:
 			return
 		out.set_from_target(msg, t, depth_remaining - 1)
 
+
 	func get_list(ptr_index: int) -> ListReader:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return ListReader.empty(msg)
 		return ListReader.from_target(msg, t, depth_remaining - 1)
 
+
 	func get_text(ptr_index: int, default_value: String = "") -> String:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_text()
+		return msg.text_from_target(t)
+
 
 	func get_data(ptr_index: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_data()
+		return msg.data_from_target(t)
+
 
 	func get_cap_index(ptr_index: int) -> int:
 		# Capability pointers decode to a table index; no RPC layer resolves them.
@@ -391,24 +474,27 @@ class StructReader extends RefCounted:
 			return -1
 		return t.cap_index
 
+
 	func _follow_ptr(ptr_index: int) -> CapnTarget:
 		if ptr_index < 0 or ptr_index >= ptr_words:
-			return msg.null_target()  # absent pointer field -> null target
+			return msg.null_target() # absent pointer field -> null target
 		if depth_remaining <= 0:
 			msg.fail("pointer depth limit exceeded")
 			return msg.null_target()
 		return msg.follow(seg_id, ptr_word + ptr_index)
 
+
 	func _in_data(byte_off: int, width: int) -> bool:
 		return byte_off >= 0 and (byte_off + width) <= data_bytes
+
 
 	func _buf() -> PackedByteArray:
 		return msg.segments.segments[seg_id]
 
-
 # =========================================================================
 # ListReader — all 8 element codes + composite + struct-upgrade rule.
 # =========================================================================
+
 
 class ListReader extends RefCounted:
 	const WORD_BYTES: int = 8
@@ -419,11 +505,12 @@ class ListReader extends RefCounted:
 	var count: int = 0
 	var first_elem_word: int = 0
 	var is_composite: bool = false
-	var step_bytes: int = 0          # non-composite primitive stride
-	var step_words: int = 0          # composite element stride (data+ptr words)
+	var step_bytes: int = 0 # non-composite primitive stride
+	var step_words: int = 0 # composite element stride (data+ptr words)
 	var comp_data_words: int = 0
 	var comp_ptr_words: int = 0
 	var depth_remaining: int = 0
+
 
 	static func from_target(msg: Message, t: CapnTarget, depth_remaining: int) -> ListReader:
 		var r: ListReader = ListReader.new()
@@ -433,7 +520,9 @@ class ListReader extends RefCounted:
 		r.depth_remaining = depth_remaining
 		if t.elem_size_code == CapnPointer.ElemSize.COMPOSITE:
 			# content_word points at the tag word; tag.offset carries the count.
-			var tag: CapnPointer = CapnPointer.decode_at(msg.segments.segments[t.seg_id], t.content_word * WORD_BYTES)
+			# follow() has already drained its decode into `t`, so its scratch pointer
+			# is free to reuse for the tag word here.
+			var tag: CapnPointer = msg.decode_ptr(t.seg_id, t.content_word)
 			r.is_composite = true
 			r.count = tag.offset
 			r.comp_data_words = tag.data_words
@@ -446,20 +535,25 @@ class ListReader extends RefCounted:
 			r.step_bytes = CapnPointer.elem_size_bytes(t.elem_size_code)
 		return r
 
+
 	static func empty(msg: Message) -> ListReader:
 		var r: ListReader = ListReader.new()
 		r.msg = msg
 		return r
 
+
 	func size() -> int:
 		return count
+
 
 	## Decode this byte-list as Text (drops trailing NUL) / Data (raw bytes).
 	func to_text() -> String:
 		return CapnTextData.text_from(_buf(), first_elem_word * WORD_BYTES, count)
 
+
 	func to_data() -> PackedByteArray:
 		return CapnTextData.data_from(_buf(), first_elem_word * WORD_BYTES, count)
+
 
 	# Bulk primitive-list decode: slice the contiguous element span and reinterpret
 	# in one C++ call instead of a per-element decode loop (~100x for large lists).
@@ -471,52 +565,67 @@ class ListReader extends RefCounted:
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 4).to_float32_array()
 
+
 	func to_float64_array() -> PackedFloat64Array:
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 8).to_float64_array()
+
 
 	func to_int32_array() -> PackedInt32Array:
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 4).to_int32_array()
 
+
 	func to_int64_array() -> PackedInt64Array:
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 8).to_int64_array()
+
 
 	func to_byte_array() -> PackedByteArray:
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count)
 
+
 	# Primitive element getters (no XOR; lists carry no per-element defaults).
 	func get_u8(i: int) -> int:
 		return _buf().decode_u8(_elem_byte(i))
 
+
 	func get_u16(i: int) -> int:
 		return _buf().decode_u16(_elem_byte(i))
+
 
 	func get_u32(i: int) -> int:
 		return _buf().decode_u32(_elem_byte(i))
 
+
 	func get_u64(i: int) -> int:
 		return _buf().decode_u64(_elem_byte(i))
+
 
 	func get_i8(i: int) -> int:
 		return _buf().decode_s8(_elem_byte(i))
 
+
 	func get_i16(i: int) -> int:
 		return _buf().decode_s16(_elem_byte(i))
+
 
 	func get_i32(i: int) -> int:
 		return _buf().decode_s32(_elem_byte(i))
 
+
 	func get_i64(i: int) -> int:
 		return _buf().decode_s64(_elem_byte(i))
+
 
 	func get_f32(i: int) -> float:
 		return _buf().decode_float(_elem_byte(i))
 
+
 	func get_f64(i: int) -> float:
 		return _buf().decode_double(_elem_byte(i))
+
 
 	func get_bool(i: int) -> bool:
 		# Bit list: LSB-first packing (encoding.md :186-187).
@@ -525,10 +634,12 @@ class ListReader extends RefCounted:
 		var bit_in_byte: int = i & 7
 		return (_buf().decode_u8(byte_off) & (1 << bit_in_byte)) != 0
 
+
 	func get_struct(i: int) -> StructReader:
 		var r: StructReader = StructReader.new()
 		fill_struct(i, r)
 		return r
+
 
 	## Populate `out` from element `i` (composite or struct-upgraded primitive),
 	## instead of allocating. Generated list getters pass a fresh `X.Reader.new()`
@@ -542,8 +653,13 @@ class ListReader extends RefCounted:
 		if is_composite:
 			var base_word: int = first_elem_word + i * step_words
 			out.set_from_inline(
-				msg, seg_id, base_word * WORD_BYTES, comp_data_words * WORD_BYTES,
-				base_word + comp_data_words, comp_ptr_words, depth_remaining - 1
+				msg,
+				seg_id,
+				base_word * WORD_BYTES,
+				comp_data_words * WORD_BYTES,
+				base_word + comp_data_words,
+				comp_ptr_words,
+				depth_remaining - 1,
 			)
 			return
 		# Struct-upgrade (encoding.md :204-215).
@@ -559,11 +675,13 @@ class ListReader extends RefCounted:
 		var data_off: int = first_elem_word * WORD_BYTES + i * step_bytes
 		out.set_from_inline(msg, seg_id, data_off, step_bytes, 0, 0, depth_remaining - 1)
 
+
 	func get_list(i: int) -> ListReader:
 		var t: CapnTarget = _follow_elem(i)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return ListReader.empty(msg)
 		return ListReader.from_target(msg, t, depth_remaining - 1)
+
 
 	func get_struct_ptr(i: int) -> StructReader:
 		# For List(Pointer) elements that are struct pointers (vs inline composite).
@@ -572,17 +690,20 @@ class ListReader extends RefCounted:
 			return StructReader.empty(msg)
 		return StructReader.from_target(msg, t, depth_remaining - 1)
 
+
 	func get_text(i: int, default_value: String = "") -> String:
 		var t: CapnTarget = _follow_elem(i)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_text()
+		return msg.text_from_target(t)
+
 
 	func get_data(i: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
 		var t: CapnTarget = _follow_elem(i)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_data()
+		return msg.data_from_target(t)
+
 
 	func get_cap_index(i: int) -> int:
 		# List(interface) element: capability pointer -> cap-table index, -1 when
@@ -593,6 +714,7 @@ class ListReader extends RefCounted:
 			return -1
 		return t.cap_index
 
+
 	func _follow_elem(i: int) -> CapnTarget:
 		if i < 0 or i >= count:
 			return msg.null_target()
@@ -601,8 +723,10 @@ class ListReader extends RefCounted:
 			return msg.null_target()
 		return msg.follow(seg_id, first_elem_word + i)
 
+
 	func _elem_byte(i: int) -> int:
 		return first_elem_word * WORD_BYTES + i * step_bytes
+
 
 	func _buf() -> PackedByteArray:
 		return msg.segments.segments[seg_id]
