@@ -117,6 +117,77 @@ class Message extends RefCounted:
 		return _target_from_pointer(seg_id, ptr_word_off + 1 + ptr.offset, ptr)
 
 
+	## Flattened follow for the decode hot path: merges decode_at_into +
+	## _target_from_pointer + _check (and their bounds checks) into one frame,
+	## cutting the layered chain's ~8 nested calls to one. The rare far case
+	## delegates to follow(). Bounds, traversal charge, and null/error targets
+	## match follow() exactly — verified against the full suite. Callers (the
+	## reader _follow_ptr/_follow_elem) own the ptr-index and depth guards.
+	# Wire->enum boundary: bit-extracted codes assigned to enum fields (D10a).
+	@warning_ignore("int_as_enum_without_cast") func follow_flat(seg_id: int, ptr_word_off: int) -> CapnTarget:
+		if seg_id < 0 or seg_id >= segments.segments.size():
+			fail("pointer word out of bounds (seg %d word %d)" % [seg_id, ptr_word_off])
+			return null_target()
+		var seg: PackedByteArray = segments.segments[seg_id]
+		var seg_words: int = seg.size() >> 3
+		if ptr_word_off < 0 or ptr_word_off >= seg_words:
+			fail("pointer word out of bounds (seg %d word %d)" % [seg_id, ptr_word_off])
+			return null_target()
+		var pbase: int = ptr_word_off * WORD_BYTES
+		var lo: int = seg.decode_u32(pbase)
+		var hi: int = seg.decode_u32(pbase + 4)
+		if lo == 0 and hi == 0:
+			return null_target()
+		var a: int = lo & 0x3
+		if a == CapnPointer.Kind.FAR:
+			return follow(seg_id, ptr_word_off) # rare; re-decode + chase in the layered path
+		var t: CapnTarget = _scratch
+		t.is_cap = false
+		t.seg_id = seg_id
+		if a == CapnPointer.Kind.OTHER: # capability
+			t.kind = CapnPointer.Kind.OTHER
+			t.is_cap = true
+			t.cap_index = hi
+			t.is_null = false
+			return t
+		# struct/list share a signed 30-bit offset, then a bounds + traversal charge.
+		var off30: int = (lo >> 2) & 0x3FFFFFFF
+		if off30 >= 0x20000000:
+			off30 -= 0x40000000
+		var content_word: int = ptr_word_off + 1 + off30
+		var ecode: int = 0
+		var ecount: int = 0
+		var dwords: int = 0
+		var pwords: int = 0
+		var span: int = 0
+		if a == CapnPointer.Kind.STRUCT:
+			dwords = hi & 0xffff
+			pwords = (hi >> 16) & 0xffff
+			span = dwords + pwords
+		else: # LIST
+			ecode = hi & 0x7
+			ecount = (hi >> 3) & 0x1FFFFFFF
+			span = (1 + ecount) if ecode == CapnPointer.ElemSize.COMPOSITE else _list_body_words(ecode, ecount)
+		if content_word < 0 or content_word + span > seg_words:
+			fail("object out of bounds (seg %d word %d span %d)" % [seg_id, content_word, span])
+			return null_target()
+		traversal_words_used += span if span > 0 else 1
+		if traversal_words_used > limits.traversal_word_limit:
+			fail("traversal limit exceeded")
+			return null_target()
+		t.content_word = content_word
+		t.is_null = false
+		if a == CapnPointer.Kind.STRUCT:
+			t.kind = CapnPointer.Kind.STRUCT
+			t.data_words = dwords
+			t.ptr_words = pwords
+		else:
+			t.kind = CapnPointer.Kind.LIST
+			t.elem_size_code = ecode
+			t.elem_count = ecount
+		return t
+
+
 	func _follow_far(far: CapnPointer) -> CapnTarget:
 		var seg: int = far.far_segment_id
 		var pad_word: int = far.offset
@@ -481,7 +552,7 @@ class StructReader extends RefCounted:
 		if depth_remaining <= 0:
 			msg.fail("pointer depth limit exceeded")
 			return msg.null_target()
-		return msg.follow(seg_id, ptr_word + ptr_index)
+		return msg.follow_flat(seg_id, ptr_word + ptr_index)
 
 
 	func _in_data(byte_off: int, width: int) -> bool:
@@ -721,7 +792,7 @@ class ListReader extends RefCounted:
 		if depth_remaining <= 0:
 			msg.fail("pointer depth limit exceeded")
 			return msg.null_target()
-		return msg.follow(seg_id, first_elem_word + i)
+		return msg.follow_flat(seg_id, first_elem_word + i)
 
 
 	func _elem_byte(i: int) -> int:
