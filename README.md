@@ -147,11 +147,20 @@ use the generated classes, which bake them in.
 
 ## Examples
 
-[`examples/save_load/`](examples/save_load/) is a runnable **save/load demo**: a
-`GameState` (player, level, hp, position, inventory) serialized to Cap'n Proto
-bytes and written to `user://`, then read back. Open `demo.tscn` and run it, or
-call the static `SaveLoadDemo.save_game(path, dict)` / `load_game(path)` from
-your own code. The same round-trip is a smoke test in `tests/integration/`.
+Three runnable demos under [`examples/`](examples/) — each pairs a `.capnp`
+schema, its generated `.gd`, a `demo.tscn` you can open and run, and a static
+pure API that doubles as an integration smoke test in `tests/integration/`:
+
+- [`save_load/`](examples/save_load/) — **save/load**: a `GameState` (player,
+  level, hp, position, inventory) serialized to bytes, written to `user://`, and
+  read back. `SaveLoadDemo.save_game(path, dict)` / `load_game(path)`.
+- [`network_packet/`](examples/network_packet/) — **multiplayer packets**: a
+  `Packet` header plus a struct-level union body (chat / move / spawn),
+  serialized to compact **packed** bytes and decoded by dispatching on the union
+  discriminant. `NetworkPacketDemo.encode_*()` / `decode(wire)`.
+- [`config/`](examples/config/) — **settings with defaults**: a `Settings` blob
+  where unset fields read back their **schema defaults**, plus an enum-typed
+  field (`Quality`). `ConfigDemo.save_settings(overrides)` / `load_settings(bytes)`.
 
 ## Type mapping
 
