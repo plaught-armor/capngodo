@@ -32,8 +32,7 @@ static func unpack(packed: PackedByteArray) -> PackedByteArray:
 		i += 1
 		var word: PackedByteArray = PackedByteArray()
 		word.resize(WORD_BYTES)
-		var bit: int = 0
-		while bit < WORD_BYTES:
+		for bit: int in WORD_BYTES:
 			if (tag & (1 << bit)) != 0:
 				if i >= n:
 					push_error("CapnPacked.unpack: truncated content bytes")
@@ -41,7 +40,6 @@ static func unpack(packed: PackedByteArray) -> PackedByteArray:
 				word[bit] = packed[i]
 				i += 1
 			# else leave zero
-			bit += 1
 		out.append_array(word)
 
 		if tag == 0x00:
@@ -84,13 +82,11 @@ static func pack(unpacked: PackedByteArray) -> PackedByteArray:
 		var base: int = w * WORD_BYTES
 		var tag: int = 0
 		var content: PackedByteArray = PackedByteArray()
-		var j: int = 0
-		while j < WORD_BYTES:
+		for j: int in WORD_BYTES:
 			var b: int = unpacked[base + j]
 			if b != 0:
 				tag = tag | (1 << j)
 				content.append(b)
-			j += 1
 		out.append(tag)
 		out.append_array(content)
 		w += 1
@@ -119,19 +115,15 @@ static func pack(unpacked: PackedByteArray) -> PackedByteArray:
 # --- helpers -------------------------------------------------------------
 
 static func _word_is_zero(buf: PackedByteArray, base: int) -> bool:
-	var j: int = 0
-	while j < WORD_BYTES:
+	for j: int in WORD_BYTES:
 		if buf[base + j] != 0:
 			return false
-		j += 1
 	return true
 
 
 static func _zero_byte_count(buf: PackedByteArray, base: int) -> int:
 	var zeros: int = 0
-	var j: int = 0
-	while j < WORD_BYTES:
+	for j: int in WORD_BYTES:
 		if buf[base + j] == 0:
 			zeros += 1
-		j += 1
 	return zeros

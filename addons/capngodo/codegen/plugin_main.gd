@@ -39,7 +39,7 @@ func _run() -> int:
 		push_error("[capnpc-gdscript] failed to parse CodeGeneratorRequest")
 		return 1
 
-	var files: Dictionary = CapnCodegen.generate_files(cgr)
+	var files: Dictionary[String, String] = CapnCodegen.generate_files(cgr)
 	if files.is_empty():
 		push_error("[capnpc-gdscript] no output generated")
 		return 1
