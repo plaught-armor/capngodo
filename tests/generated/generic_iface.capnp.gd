@@ -27,31 +27,29 @@ class Box extends RefCounted:
 		func get_value_data() -> PackedByteArray:
 			return self.get_data(0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_value_struct(data_words: int, ptr_words: int) -> CapnBuilder.StructBuilder:
-			return _b.init_struct(0, data_words, ptr_words)
+			return self.init_struct(0, data_words, ptr_words)
 
 		func init_value_list(elem_size: CapnPointer.ElemSize, count: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(0, elem_size, count)
+			return self.init_list(0, elem_size, count)
 
 		func init_value_composite_list(count: int, data_words: int, ptr_words: int) -> CapnBuilder.ListBuilder:
-			return _b.init_composite_list(0, count, data_words, ptr_words)
+			return self.init_composite_list(0, count, data_words, ptr_words)
 
 		func set_value_text(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_value_data(value: PackedByteArray) -> void:
-			_b.set_data(0, value)
+			self.set_data(0, value)
 
 class Use extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -68,19 +66,19 @@ class Use extends RefCounted:
 			self.fill_struct(0, r)
 			return r
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func init_h() -> Box_Handle.Builder:
-			return Box_Handle.Builder.wrap(_b.init_struct(0, Box_Handle.DATA_WORDS, Box_Handle.PTR_WORDS))
+			var b: Box_Handle.Builder = Box_Handle.Builder.new()
+			self.fill_struct(0, Box_Handle.DATA_WORDS, Box_Handle.PTR_WORDS, b)
+			return b
 
 class Box_Handle extends RefCounted:
 	const DATA_WORDS: int = 0
@@ -95,16 +93,14 @@ class Box_Handle extends RefCounted:
 		func get_value() -> int:
 			return self.get_cap_index(0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		# capability 'value' is read-only (serialization only, no RPC)
 

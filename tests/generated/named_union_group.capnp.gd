@@ -40,38 +40,36 @@ class Command extends RefCounted:
 		func is_body_quit() -> bool:
 			return self.get_u16(4, 0) == 2
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_id(value: int) -> void:
-			_b.set_u32(0, value, 0)
+			self.set_u32(0, value, 0)
 
 		func set_body_chat_sender(value: String) -> void:
-			_b.set_u16(4, 0, 0)
-			_b.set_text(0, value)
+			self.set_u16(4, 0, 0)
+			self.set_text(0, value)
 
 		func set_body_chat_text(value: String) -> void:
-			_b.set_u16(4, 0, 0)
-			_b.set_text(1, value)
+			self.set_u16(4, 0, 0)
+			self.set_text(1, value)
 
 		func set_body_move_dx(value: int) -> void:
-			_b.set_u16(4, 1, 0)
-			_b.set_i32(8, value, 0)
+			self.set_u16(4, 1, 0)
+			self.set_i32(8, value, 0)
 
 		func set_body_move_dy(value: int) -> void:
-			_b.set_u16(4, 1, 0)
-			_b.set_i32(12, value, 0)
+			self.set_u16(4, 1, 0)
+			self.set_i32(12, value, 0)
 
 		func set_body_quit() -> void:
-			_b.set_u16(4, 2, 0)
+			self.set_u16(4, 2, 0)
 
 
 static func read_command(bytes: PackedByteArray, packed: bool = false) -> Command.Reader:

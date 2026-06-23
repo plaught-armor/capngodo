@@ -49,40 +49,38 @@ class Msg extends RefCounted:
 		func get_count() -> int:
 			return self.get_u16(6, 0)
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_id(value: int) -> void:
-			_b.set_u32(0, value, 0)
+			self.set_u32(0, value, 0)
 
 		func set_none() -> void:
-			_b.set_u16(4, 0, 0)
+			self.set_u16(4, 0, 0)
 
 		func set_payload_text(value: String) -> void:
-			_b.set_u16(4, 1, 0)
-			_b.set_u16(6, 0, 0)
-			_b.set_text(0, value)
+			self.set_u16(4, 1, 0)
+			self.set_u16(6, 0, 0)
+			self.set_text(0, value)
 
 		func set_payload_num(value: int) -> void:
-			_b.set_u16(4, 1, 0)
-			_b.set_u16(6, 1, 0)
-			_b.set_i32(8, value, 0)
+			self.set_u16(4, 1, 0)
+			self.set_u16(6, 1, 0)
+			self.set_i32(8, value, 0)
 
 		func set_payload_reset() -> void:
-			_b.set_u16(4, 1, 0)
-			_b.set_u16(6, 2, 0)
+			self.set_u16(4, 1, 0)
+			self.set_u16(6, 2, 0)
 
 		func set_count(value: int) -> void:
-			_b.set_u16(4, 2, 0)
-			_b.set_u16(6, value, 0)
+			self.set_u16(4, 2, 0)
+			self.set_u16(6, value, 0)
 
 
 static func read_msg(bytes: PackedByteArray, packed: bool = false) -> Msg.Reader:

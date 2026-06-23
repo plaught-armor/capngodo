@@ -23,7 +23,9 @@ func test_interface_param_decodes_poked_cap_index() -> void:
 	# to exercise the get_cap_index decode the typed accessor wraps.
 	var u: GenericIfaceCapnp.Use.Builder = GenericIfaceCapnp.new_use()
 	var hb: GenericIfaceCapnp.Box_Handle.Builder = u.init_h()
-	var sb: CapnBuilder.StructBuilder = hb._b
+	# The generated Builder IS a StructBuilder now (wrapper-collapse), so poke the
+	# capability pointer directly on it (capabilities have no typed setter).
+	var sb: CapnBuilder.StructBuilder = hb
 	sb.arena._put(sb.seg_id, sb.ptr_word + 0, CapnPointer.encode_cap(5))
 
 	var r: GenericIfaceCapnp.Use.Reader = GenericIfaceCapnp.read_use(u.to_bytes())

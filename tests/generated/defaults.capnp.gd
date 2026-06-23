@@ -44,46 +44,44 @@ class Defaults extends RefCounted:
 		func get_emptyd() -> PackedByteArray:
 			return self.get_data(3, PackedByteArray())
 
-	class Builder extends RefCounted:
-		var _b: CapnBuilder.StructBuilder
-
+	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
 			var o: Builder = Builder.new()
-			o._b = b
+			o.set_from(b.arena, b.seg_id, b.data_word, b.data_words, b.ptr_words)
 			return o
 
 		func to_bytes(packed: bool = false) -> PackedByteArray:
-			return CapnBuilder.to_bytes(_b, packed)
+			return CapnBuilder.to_bytes(self, packed)
 
 		func set_i32f(value: int) -> void:
-			_b.set_i32(0, value, -42)
+			self.set_i32(0, value, -42)
 
 		func set_u16f(value: int) -> void:
-			_b.set_u16(4, value, 7)
+			self.set_u16(4, value, 7)
 
 		func set_boolf(value: bool) -> void:
-			_b.set_bool(48, value, true)
+			self.set_bool(48, value, true)
 
 		func set_f32f(value: float) -> void:
-			_b.set_f32(8, value, 1069547520)
+			self.set_f32(8, value, 1069547520)
 
 		func set_f64f(value: float) -> void:
-			_b.set_f64(16, value, 4612811918334230528)
+			self.set_f64(16, value, 4612811918334230528)
 
 		func set_textf(value: String) -> void:
-			_b.set_text(0, value)
+			self.set_text(0, value)
 
 		func set_enumf(value: Shade) -> void:
-			_b.set_u16(12, value, 1)
+			self.set_u16(12, value, 1)
 
 		func set_dataf(value: PackedByteArray) -> void:
-			_b.set_data(1, value)
+			self.set_data(1, value)
 
 		func set_datas(value: PackedByteArray) -> void:
-			_b.set_data(2, value)
+			self.set_data(2, value)
 
 		func set_emptyd(value: PackedByteArray) -> void:
-			_b.set_data(3, value)
+			self.set_data(3, value)
 
 
 static func read_defaults(bytes: PackedByteArray, packed: bool = false) -> Defaults.Reader:
