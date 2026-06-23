@@ -106,14 +106,14 @@ class Container_ extends RefCounted:
 		func which() -> int:
 			return _r.get_u16(0, 0)
 
-		func get_boxed_text() -> Box.Reader:
-			return Box.Reader.wrap(_r.get_struct(0))
+		func get_boxed_text() -> Box_Text.Reader:
+			return Box_Text.Reader.wrap(_r.get_struct(0))
 
-		func get_boxed_struct() -> Box.Reader:
-			return Box.Reader.wrap(_r.get_struct(1))
+		func get_boxed_struct() -> Box_Inner.Reader:
+			return Box_Inner.Reader.wrap(_r.get_struct(1))
 
-		func get_boxed_list() -> Box.Reader:
-			return Box.Reader.wrap(_r.get_struct(2))
+		func get_boxed_list() -> Box_List_Int32.Reader:
+			return Box_List_Int32.Reader.wrap(_r.get_struct(2))
 
 		func has_raw() -> bool:
 			return _r.has_ptr(3)
@@ -165,14 +165,14 @@ class Container_ extends RefCounted:
 		func to_bytes(packed: bool = false) -> PackedByteArray:
 			return CapnBuilder.to_bytes(_b, packed)
 
-		func init_boxed_text() -> Box.Builder:
-			return Box.Builder.wrap(_b.init_struct(0, Box.DATA_WORDS, Box.PTR_WORDS))
+		func init_boxed_text() -> Box_Text.Builder:
+			return Box_Text.Builder.wrap(_b.init_struct(0, Box_Text.DATA_WORDS, Box_Text.PTR_WORDS))
 
-		func init_boxed_struct() -> Box.Builder:
-			return Box.Builder.wrap(_b.init_struct(1, Box.DATA_WORDS, Box.PTR_WORDS))
+		func init_boxed_struct() -> Box_Inner.Builder:
+			return Box_Inner.Builder.wrap(_b.init_struct(1, Box_Inner.DATA_WORDS, Box_Inner.PTR_WORDS))
 
-		func init_boxed_list() -> Box.Builder:
-			return Box.Builder.wrap(_b.init_struct(2, Box.DATA_WORDS, Box.PTR_WORDS))
+		func init_boxed_list() -> Box_List_Int32.Builder:
+			return Box_List_Int32.Builder.wrap(_b.init_struct(2, Box_List_Int32.DATA_WORDS, Box_List_Int32.PTR_WORDS))
 
 		func init_raw_struct(data_words: int, ptr_words: int) -> CapnBuilder.StructBuilder:
 			return _b.init_struct(3, data_words, ptr_words)
@@ -212,6 +212,116 @@ class Container_ extends RefCounted:
 		func set_opt_num(value: int) -> void:
 			_b.set_u16(0, 1, 0)
 			_b.set_i32(4, value, 0)
+
+class Box_Text extends RefCounted:
+	const DATA_WORDS: int = 0
+	const PTR_WORDS: int = 2
+
+	class Reader extends RefCounted:
+		var _r: CapnReader.StructReader
+
+		static func wrap(r: CapnReader.StructReader) -> Reader:
+			var o: Reader = Reader.new()
+			o._r = r
+			return o
+
+		func get_value() -> String:
+			return _r.get_text(0, "")
+
+		func get_label() -> String:
+			return _r.get_text(1, "")
+
+	class Builder extends RefCounted:
+		var _b: CapnBuilder.StructBuilder
+
+		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
+			var o: Builder = Builder.new()
+			o._b = b
+			return o
+
+		func to_bytes(packed: bool = false) -> PackedByteArray:
+			return CapnBuilder.to_bytes(_b, packed)
+
+		func set_value(value: String) -> void:
+			_b.set_text(0, value)
+
+		func set_label(value: String) -> void:
+			_b.set_text(1, value)
+
+class Box_Inner extends RefCounted:
+	const DATA_WORDS: int = 0
+	const PTR_WORDS: int = 2
+
+	class Reader extends RefCounted:
+		var _r: CapnReader.StructReader
+
+		static func wrap(r: CapnReader.StructReader) -> Reader:
+			var o: Reader = Reader.new()
+			o._r = r
+			return o
+
+		func get_value() -> Inner.Reader:
+			return Inner.Reader.wrap(_r.get_struct(0))
+
+		func get_label() -> String:
+			return _r.get_text(1, "")
+
+	class Builder extends RefCounted:
+		var _b: CapnBuilder.StructBuilder
+
+		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
+			var o: Builder = Builder.new()
+			o._b = b
+			return o
+
+		func to_bytes(packed: bool = false) -> PackedByteArray:
+			return CapnBuilder.to_bytes(_b, packed)
+
+		func init_value() -> Inner.Builder:
+			return Inner.Builder.wrap(_b.init_struct(0, Inner.DATA_WORDS, Inner.PTR_WORDS))
+
+		func set_label(value: String) -> void:
+			_b.set_text(1, value)
+
+class Box_List_Int32 extends RefCounted:
+	const DATA_WORDS: int = 0
+	const PTR_WORDS: int = 2
+
+	class Reader extends RefCounted:
+		var _r: CapnReader.StructReader
+
+		static func wrap(r: CapnReader.StructReader) -> Reader:
+			var o: Reader = Reader.new()
+			o._r = r
+			return o
+
+		func get_value() -> Array[int]:
+			var lr: CapnReader.ListReader = _r.get_list(0)
+			var out: Array[int] = []
+			out.resize(lr.size())
+			for i: int in lr.size():
+				out[i] = lr.get_i32(i)
+			return out
+
+		func get_label() -> String:
+			return _r.get_text(1, "")
+
+	class Builder extends RefCounted:
+		var _b: CapnBuilder.StructBuilder
+
+		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:
+			var o: Builder = Builder.new()
+			o._b = b
+			return o
+
+		func to_bytes(packed: bool = false) -> PackedByteArray:
+			return CapnBuilder.to_bytes(_b, packed)
+
+		func init_value(n: int) -> CapnBuilder.ListBuilder:
+			return _b.init_list(0, CapnPointer.ElemSize.FOUR_BYTES, n)
+
+		func set_label(value: String) -> void:
+			_b.set_text(1, value)
 
 
 static func read_inner(bytes: PackedByteArray, packed: bool = false) -> Inner.Reader:

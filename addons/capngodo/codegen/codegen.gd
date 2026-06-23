@@ -32,6 +32,32 @@ class CodegenEntry extends RefCounted:
 		is_top = p_is_top
 
 
+## One concrete instantiation of a generic struct to emit (CG1b). `subst` maps a
+## generic parameter index -> its bound Type reader; `subst_scope` is the generic
+## node id those parameters belong to. POD record (D1).
+class MonoInst extends RefCounted:
+	var gen_node: CapnReader.StructReader
+	var mono_name: String
+	var subst: Dictionary[int, CapnReader.StructReader]
+	var subst_scope: int
+
+	func _init(p_node: CapnReader.StructReader, p_name: String, p_subst: Dictionary[int, CapnReader.StructReader], p_scope: int) -> void:
+		gen_node = p_node
+		mono_name = p_name
+		subst = p_subst
+		subst_scope = p_scope
+
+
+## Brand-signature -> monomorphic class name, for the file currently being
+## emitted (CG1b). Set/reset by _emit_umbrella, populated by
+## _collect_instantiations before the struct loop, read by _struct_flat when a
+## branded struct field resolves to its mono class. Emit-scoped scratch: safe
+## because generate_files emits files strictly sequentially with no await on the
+## emit path (same pattern as _f32_scratch). Mono classes are per-file — two
+## files each using Box(Text) emit their own Box_Text.
+static var _mono_by_sig: Dictionary[String, String] = {}
+
+
 static func generate_files(cgr: CapnReader.StructReader) -> Dictionary[String, String]:
 	var nodes_by_id: Dictionary[int, CapnReader.StructReader] = _index_nodes(cgr)
 	var out: Dictionary[String, String] = {}
@@ -134,6 +160,18 @@ static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by
 	# umbrella class. Local names (already in flat_by_id) win; everything else
 	# from the other requested files becomes a qualified "Umbrella.Flat".
 	_add_cross_file_names(CapnSchema.node_id(file_node), by_id, flat_by_id, requested_ids)
+
+	# Generics monomorphization (CG1b): find every concrete instantiation
+	# (Box(Text), Box(Inner), …) and register its signature -> mono class name
+	# BEFORE emitting fields, so a branded struct field resolves to its mono class
+	# (Box(Text) -> Box_Text.Reader). The erased generic (CG1a) still emits as the
+	# unbound floor; mono classes are additive.
+	_mono_by_sig = {}
+	var used_names: Dictionary[String, bool] = {}
+	for id: int in flat_by_id:
+		used_names[flat_by_id[id]] = true
+	var monos: Array[MonoInst] = _collect_instantiations(types, by_id, flat_by_id, used_names)
+
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("class_name %s extends RefCounted" % _umbrella_class(fname))
 	lines.append("")
@@ -150,6 +188,13 @@ static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by
 	for entry: CodegenEntry in types:
 		if CapnSchema.node_which(entry.node) == CapnSchema.NodeWhich.STRUCT:
 			_emit_struct(lines, entry, flat_by_id, by_id)
+
+	# Monomorphic classes (CG1b): each instantiation re-emits the generic struct
+	# with its parameter slot(s) typed to the bound type. A synthetic entry carries
+	# the mono name; subst/subst_scope drive the param substitution in _emit_struct.
+	for m: MonoInst in monos:
+		var ent: CodegenEntry = CodegenEntry.new(CapnSchema.node_id(m.gen_node), m.mono_name, m.gen_node, false)
+		_emit_struct(lines, ent, flat_by_id, by_id, m.subst, m.subst_scope)
 
 	# Top-level read_<name>() / new_<name>() entry per top-level struct.
 	for entry: CodegenEntry in types:
@@ -251,7 +296,7 @@ static func _float_literal(x: float, _is_f64: bool) -> String:
 	return str(x)
 
 
-static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader]) -> void:
+static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], subst: Dictionary[int, CapnReader.StructReader] = {}, subst_scope: int = 0) -> void:
 	var node: CapnReader.StructReader = entry.node
 	var flat: String = entry.flat
 	var fields: CapnReader.ListReader = CapnSchema.node_struct_fields(node)
@@ -284,7 +329,14 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 		lines.append(TAB + TAB + "func which() -> int:")
 		lines.append(TAB + TAB + TAB + "return _r.get_u16(%d, 0)" % struct_disc)
 	for i: int in fields.size():
-		_emit_field_getter(lines, fields.get_struct(i), flat_by_id, by_id, struct_disc)
+		var gf: CapnReader.StructReader = fields.get_struct(i)
+		var ov: CapnReader.StructReader = _param_override(gf, subst, subst_scope)
+		if ov != null:
+			# Generic parameter slot (CG1b): emit a typed getter from the bound type
+			# instead of the erased AnyPointer accessors.
+			_emit_slot_getter(lines, _safe_member(_snake(CapnSchema.field_name(gf))), gf, flat_by_id, ov)
+		else:
+			_emit_field_getter(lines, gf, flat_by_id, by_id, struct_disc)
 	lines.append("")
 
 	# Builder.
@@ -299,7 +351,13 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 	lines.append(TAB + TAB + "func to_bytes(packed: bool = false) -> PackedByteArray:")
 	lines.append(TAB + TAB + TAB + "return CapnBuilder.to_bytes(_b, packed)")
 	for i: int in fields.size():
-		_emit_field_setter(lines, fields.get_struct(i), flat_by_id, by_id, struct_disc)
+		var sf: CapnReader.StructReader = fields.get_struct(i)
+		var ov: CapnReader.StructReader = _param_override(sf, subst, subst_scope)
+		if ov != null:
+			# Generic parameter slot (CG1b): typed setter from the bound type.
+			_emit_slot_setter(lines, _safe_member(_snake(CapnSchema.field_name(sf))), sf, flat_by_id, -1, 0, -1, 0, ov)
+		else:
+			_emit_field_setter(lines, sf, flat_by_id, by_id, struct_disc)
 	lines.append("")
 
 
@@ -384,8 +442,11 @@ static func _emit_is_arm(lines: PackedStringArray, fname: String, struct_disc: i
 
 
 ## Emit a get_<suffix>() reader for a slot field. Void fields produce nothing.
-static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> void:
-	var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
+## type_override (CG1b): when non-null, emit the accessor with this Type instead
+## of the field's declared type (a generic parameter slot bound to a concrete
+## type). The wire offset still comes from `f` (param fields are pointer slots).
+static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], type_override: CapnReader.StructReader = null) -> void:
+	var t: CapnReader.StructReader = type_override if type_override != null else CapnSchema.field_slot_type(f)
 	var off: int = CapnSchema.field_slot_offset(f)
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	if tw == CapnSchema.TypeWhich.VOID:
@@ -496,7 +557,7 @@ static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.Stru
 	if ew == CapnSchema.TypeWhich.ANY_POINTER or ew == CapnSchema.TypeWhich.VOID:
 		return "Array"
 	if ew == CapnSchema.TypeWhich.STRUCT:
-		var flat: String = _flat_of(elem, flat_by_id)
+		var flat: String = _struct_flat(elem, flat_by_id)
 		return ("Array[%s.Reader]" % flat) if flat != "" else "Array"
 	return "Array[%s]" % _return_type(ew, elem, flat_by_id)
 
@@ -539,8 +600,10 @@ static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructRea
 
 ## Emit a setter (set_/init_) for a slot field. When disc_off >= 0 the field is
 ## a union member, so the setter writes the discriminant first.
-static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_off: int, disc_val: int, outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
-	var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
+## type_override (CG1b): see _emit_slot_getter — a generic parameter slot bound to
+## a concrete type emits a typed setter; offset still from `f`.
+static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_off: int, disc_val: int, outer_disc_off: int = -1, outer_disc_val: int = 0, type_override: CapnReader.StructReader = null) -> void:
+	var t: CapnReader.StructReader = type_override if type_override != null else CapnSchema.field_slot_type(f)
 	var off: int = CapnSchema.field_slot_offset(f)
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	# disc_line may carry up to two discriminant writes: the OUTER struct-level
@@ -564,7 +627,7 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 		_emit_list_setter(lines, suffix, off, CapnSchema.type_list_element(t), flat_by_id, disc_line)
 		return
 	if tw == CapnSchema.TypeWhich.STRUCT:
-		var child: String = _flat_of(t, flat_by_id)
+		var child: String = _struct_flat(t, flat_by_id)
 		if child == "":
 			lines.append("")
 			lines.append(TAB + TAB + "# TODO(M6): init '%s' (unresolved cross-file struct)" % suffix)
@@ -950,7 +1013,7 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 	elif tw == CapnSchema.TypeWhich.DATA:
 		return "%s.get_data(%d, %s)" % [recv, off, def]
 	elif tw == CapnSchema.TypeWhich.STRUCT:
-		var flat: String = _flat_of(t, flat_by_id)
+		var flat: String = _struct_flat(t, flat_by_id)
 		if flat == "":
 			return "null  # TODO(M6): unresolved cross-file struct"
 		return "%s.Reader.wrap(%s.get_struct(%d))" % [flat, recv, off]
@@ -969,7 +1032,7 @@ static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructRea
 	if ew == CapnSchema.TypeWhich.INTERFACE:
 		return "lr.get_cap_index(i)"  # List(interface): cap-table index, -1 absent (CG10)
 	if ew == CapnSchema.TypeWhich.STRUCT:
-		var flat: String = _flat_of(elem, flat_by_id)
+		var flat: String = _struct_flat(elem, flat_by_id)
 		if flat == "":
 			return "null  # TODO(M6): unresolved cross-file struct"
 		return "%s.Reader.wrap(lr.get_struct(i))" % flat
@@ -1016,7 +1079,7 @@ static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, f
 	elif tw == CapnSchema.TypeWhich.DATA:
 		return "PackedByteArray"
 	elif tw == CapnSchema.TypeWhich.STRUCT:
-		var flat: String = _flat_of(t, flat_by_id)
+		var flat: String = _struct_flat(t, flat_by_id)
 		return ("%s.Reader" % flat) if flat != "" else "Variant"
 	elif tw == CapnSchema.TypeWhich.ENUM:
 		# Enum at the API boundary (D10a): return the generated enum type for
@@ -1038,6 +1101,207 @@ static func _flat_of(type_reader: CapnReader.StructReader, flat_by_id: Dictionar
 		push_error("[CapnCodegen] unresolved type id %d (cross-file refs land in M6)" % id)
 		return ""
 	return flat_by_id[id]
+
+
+## Flattened name for a STRUCT type, resolving a concrete generic instantiation to
+## its monomorphic class (CG1b). Box(Text) -> "Box_Text" when that instantiation
+## was collected; otherwise falls back to the erased generic / plain struct name.
+## Gate the caller on type_which == STRUCT (reads the brand).
+static func _struct_flat(t: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
+	var sig: String = _brand_signature(t)
+	if _mono_by_sig.has(sig):
+		return _mono_by_sig[sig]
+	return _flat_of(t, flat_by_id)
+
+
+# --- generics monomorphization (CG1b) ------------------------------------
+
+## The bound Type for `f` when it is a generic parameter slot of the generic
+## currently being monomorphized, else null. A param slot is an AnyPointer whose
+## anyPointer.which == PARAMETER and whose scopeId matches subst_scope; the bound
+## type is subst[parameterIndex] (null when that parameter is left unbound).
+static func _param_override(f: CapnReader.StructReader, subst: Dictionary[int, CapnReader.StructReader], subst_scope: int) -> CapnReader.StructReader:
+	if subst_scope == 0:
+		return null
+	if CapnSchema.field_which(f) != CapnSchema.FieldWhich.SLOT:
+		return null
+	var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
+	if CapnSchema.type_which(t) != CapnSchema.TypeWhich.ANY_POINTER:
+		return null
+	if CapnSchema.type_anyptr_which(t) != CapnSchema.AnyPtrWhich.PARAMETER:
+		return null
+	if CapnSchema.anyptr_param_scope_id(t) != subst_scope:
+		return null
+	return subst.get(CapnSchema.anyptr_param_index(t))
+
+
+## Walk every collected struct's fields; for each field whose type is a concrete
+## generic instantiation, register its signature -> mono name (in _mono_by_sig)
+## and queue a MonoInst. Dedup by signature so two fields of Box(Text) share one
+## Box_Text. Flat case only: direct struct-typed slots (group-nested / list-elem
+## generics are deferred — see docs/CG1B_PLAN.md).
+static func _collect_instantiations(types: Array[CodegenEntry], by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], used_names: Dictionary[String, bool]) -> Array[MonoInst]:
+	var insts: Array[MonoInst] = []
+	var seen: Dictionary[String, bool] = {}
+	for entry: CodegenEntry in types:
+		if CapnSchema.node_which(entry.node) != CapnSchema.NodeWhich.STRUCT:
+			continue
+		var fields: CapnReader.ListReader = CapnSchema.node_struct_fields(entry.node)
+		for i: int in fields.size():
+			var f: CapnReader.StructReader = fields.get_struct(i)
+			if CapnSchema.field_which(f) != CapnSchema.FieldWhich.SLOT:
+				continue
+			var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
+			if CapnSchema.type_which(t) != CapnSchema.TypeWhich.STRUCT:
+				continue
+			if not _is_concrete_generic(t):
+				continue
+			# Only monomorphize generics we actually emit. A generic defined in an
+			# unrequested file has no local class to extend the layout from, so its
+			# field stays unresolved (erased) rather than emitting a broken mono.
+			if not flat_by_id.has(CapnSchema.type_id(t)):
+				continue
+			var sig: String = _brand_signature(t)
+			if seen.has(sig):
+				continue
+			seen[sig] = true
+			var gen_id: int = CapnSchema.type_id(t)
+			var gen_node: CapnReader.StructReader = by_id.get(gen_id)
+			if gen_node == null:
+				continue
+			var mono_name: String = _uniquify(_mono_name(flat_by_id[gen_id], t, flat_by_id), used_names)
+			used_names[mono_name] = true
+			_mono_by_sig[sig] = mono_name
+			insts.append(MonoInst.new(gen_node, mono_name, _build_subst(t, gen_id), gen_id))
+	return insts
+
+
+## True when STRUCT type `t` carries a brand that binds at least one of its own
+## parameters to a concrete type (vs all-unbound -> falls back to the erased
+## generic). Reads the BIND scope whose scopeId == t's node id.
+static func _is_concrete_generic(t: CapnReader.StructReader) -> bool:
+	var scope: CapnReader.StructReader = _find_bind_scope(t)
+	if scope == null:
+		return false
+	var binds: CapnReader.ListReader = CapnSchema.scope_bind(scope)
+	for i: int in binds.size():
+		if CapnSchema.binding_which(binds.get_struct(i)) == CapnSchema.BindingWhich.TYPE:
+			return true
+	return false
+
+
+## The Brand.Scope (which == BIND) binding `t`'s own parameters, or null.
+static func _find_bind_scope(t: CapnReader.StructReader) -> CapnReader.StructReader:
+	var gen_id: int = CapnSchema.type_id(t)
+	var scopes: CapnReader.ListReader = CapnSchema.brand_scopes(CapnSchema.type_brand(t))
+	for i: int in scopes.size():
+		var s: CapnReader.StructReader = scopes.get_struct(i)
+		if CapnSchema.scope_id(s) == gen_id and CapnSchema.scope_which(s) == CapnSchema.BrandScopeWhich.BIND:
+			return s
+	return null
+
+
+## parameterIndex -> bound Type reader for the concrete bindings of `t`.
+static func _build_subst(t: CapnReader.StructReader, gen_id: int) -> Dictionary[int, CapnReader.StructReader]:
+	var out: Dictionary[int, CapnReader.StructReader] = {}
+	var scope: CapnReader.StructReader = _find_bind_scope(t)
+	if scope == null:
+		return out
+	var binds: CapnReader.ListReader = CapnSchema.scope_bind(scope)
+	for i: int in binds.size():
+		var b: CapnReader.StructReader = binds.get_struct(i)
+		if CapnSchema.binding_which(b) == CapnSchema.BindingWhich.TYPE:
+			out[i] = CapnSchema.binding_type(b)
+	return out
+
+
+## Canonical dedup key for an instantiation: "<genId>|<arg>|<arg>…" using node
+## ids (request-order-independent). Unbound params render "U". A plain struct (no
+## bindings) yields just "<id>", which never matches a mono entry.
+static func _brand_signature(t: CapnReader.StructReader) -> String:
+	var s: String = str(CapnSchema.type_id(t))
+	var scope: CapnReader.StructReader = _find_bind_scope(t)
+	if scope == null:
+		return s
+	var binds: CapnReader.ListReader = CapnSchema.scope_bind(scope)
+	for i: int in binds.size():
+		s += "|" + _sig_of_binding(binds.get_struct(i))
+	return s
+
+
+static func _sig_of_binding(b: CapnReader.StructReader) -> String:
+	if CapnSchema.binding_which(b) != CapnSchema.BindingWhich.TYPE:
+		return "U"
+	return _sig_of_type(CapnSchema.binding_type(b))
+
+
+## Signature fragment for a bound type. Struct -> "n(<brand-sig>)" (the brand is
+## expanded recursively so Box(Box(Text)) and Box(Box(Int32)) get distinct keys);
+## enum/interface -> "n<id>"; list -> "L(<elem>)"; scalar/text/etc -> "s<which>".
+## (capnp forbids scalar generic args, so the scalar arm only renders LIST element
+## types, never a bound parameter.)
+static func _sig_of_type(t: CapnReader.StructReader) -> String:
+	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
+	if tw == CapnSchema.TypeWhich.STRUCT:
+		return "n(" + _brand_signature(t) + ")"
+	if tw == CapnSchema.TypeWhich.ENUM or tw == CapnSchema.TypeWhich.INTERFACE:
+		return "n" + str(CapnSchema.type_id(t))
+	if tw == CapnSchema.TypeWhich.LIST:
+		return "L(" + _sig_of_type(CapnSchema.type_list_element(t)) + ")"
+	return "s" + str(tw)
+
+
+## Human mono name: "<GenFlat>_<Arg>_<Arg>…" (Box_Text, Map_Text_Int32). Struct/
+## enum args use the bound type's flat basename; scalars use the capnp kind name.
+static func _mono_name(gen_flat: String, t: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
+	var parts: PackedStringArray = PackedStringArray()
+	parts.append(_basename(gen_flat))
+	var scope: CapnReader.StructReader = _find_bind_scope(t)
+	if scope != null:
+		var binds: CapnReader.ListReader = CapnSchema.scope_bind(scope)
+		for i: int in binds.size():
+			parts.append(_mono_arg_name(binds.get_struct(i), flat_by_id))
+	return _safe_type("_".join(parts))
+
+
+static func _mono_arg_name(b: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
+	if CapnSchema.binding_which(b) != CapnSchema.BindingWhich.TYPE:
+		return "Any"
+	return _arg_name_of_type(CapnSchema.binding_type(b), flat_by_id)
+
+
+static func _arg_name_of_type(t: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
+	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
+	if tw == CapnSchema.TypeWhich.STRUCT or tw == CapnSchema.TypeWhich.ENUM or tw == CapnSchema.TypeWhich.INTERFACE:
+		var flat: String = flat_by_id.get(CapnSchema.type_id(t), "")
+		return _basename(flat) if flat != "" else _capnp_kind_name(tw)
+	if tw == CapnSchema.TypeWhich.LIST:
+		return "List_" + _arg_name_of_type(CapnSchema.type_list_element(t), flat_by_id)
+	return _capnp_kind_name(tw)
+
+
+## Last "."-segment of a (possibly cross-file-qualified) flat name:
+## "CommonCapnp.Point" -> "Point", "Box" -> "Box".
+static func _basename(flat: String) -> String:
+	return flat.get_slice(".", flat.get_slice_count(".") - 1)
+
+
+static func _capnp_kind_name(tw: CapnSchema.TypeWhich) -> String:
+	if tw == CapnSchema.TypeWhich.VOID: return "Void"
+	elif tw == CapnSchema.TypeWhich.BOOL: return "Bool"
+	elif tw == CapnSchema.TypeWhich.INT8: return "Int8"
+	elif tw == CapnSchema.TypeWhich.INT16: return "Int16"
+	elif tw == CapnSchema.TypeWhich.INT32: return "Int32"
+	elif tw == CapnSchema.TypeWhich.INT64: return "Int64"
+	elif tw == CapnSchema.TypeWhich.UINT8: return "UInt8"
+	elif tw == CapnSchema.TypeWhich.UINT16: return "UInt16"
+	elif tw == CapnSchema.TypeWhich.UINT32: return "UInt32"
+	elif tw == CapnSchema.TypeWhich.UINT64: return "UInt64"
+	elif tw == CapnSchema.TypeWhich.FLOAT32: return "Float32"
+	elif tw == CapnSchema.TypeWhich.FLOAT64: return "Float64"
+	elif tw == CapnSchema.TypeWhich.TEXT: return "Text"
+	elif tw == CapnSchema.TypeWhich.DATA: return "Data"
+	return "Any"
 
 
 # --- naming helpers ------------------------------------------------------

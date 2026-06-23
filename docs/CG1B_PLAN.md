@@ -14,8 +14,22 @@ archaeology. Offsets lifted from `capnproto/c++/src/capnp/schema.capnp.h`.
 - **Step 1 — meta_schema Brand accessors: DONE** (commit `8ee8652`). All the
   accessors below exist and are verified against `tests/fixtures/generic.cgr.bin`
   by `tests/integration/test_brand_meta.gd`. Every wire offset is confirmed.
-- **Step 2 — the monomorphizer: TODO.** Detailed below. This is the remaining
-  work; nothing in the codegen emits monomorphic classes yet.
+- **Step 2 — the monomorphizer: DONE (flat case)** (codegen.gd). The 2a→2b→2c
+  build landed: `type_override` on the slot getter/setter (2a), `_struct_flat`
+  resolving branded struct refs to mono names via the emit-scoped `_mono_by_sig`
+  (2b), and `_collect_instantiations` + the mono emit loop in `_emit_umbrella`
+  (2c). `Box(Text)` → `Box_Text` with `get_value() -> String`; `Box(Inner)` →
+  `Box_Inner` with `get_value() -> Inner.Reader` / `init_value()`; `Box(List(Int32))`
+  → `Box_List_Int32` with `get_value() -> Array[int]`. Erased `Box` stays the
+  unbound floor (CG1a). Verified by `tests/integration/test_generic.gd`; zero
+  golden drift on the 11 non-generic schemas. Deferred sub-cases (below) remain.
+- **Still deferred (post-flat):** nested-generic *emission* (`Box(Box(Text))`
+  emits a typed outer but an erased inner — `_sig_of_type` already keys nested
+  brands distinctly so two such outers never collide, the inner mono just isn't
+  generated yet); generic-parameter slots nested inside a group of the generic
+  body (emit erased in the mono — `_param_override` only matches top-level slots);
+  `inherit` scopes; generic enums / interfaces. A regression test for the
+  nested-outer signature distinction lands with nested-generic emission.
 
 ## Wire offsets (for meta_schema accessors)
 
