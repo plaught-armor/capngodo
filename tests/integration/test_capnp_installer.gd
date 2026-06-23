@@ -5,7 +5,7 @@ extends GutTest
 ## stays in lock-step with the CI job names, and a crafted zip extracts to the
 ## cache path with executable content intact.
 
-const KNOWN_ASSETS: PackedStringArray = [
+var _known_assets: PackedStringArray = [
 	"capnp-windows-x86_64.zip",
 	"capnp-macos-universal.zip",
 	"capnp-linux-x86_64.zip",
@@ -16,7 +16,7 @@ func test_expected_asset_matches_a_ci_built_name() -> void:
 	# Parity guard: expected_asset() must name an asset the release workflow
 	# actually produces. Drift here = silent "no asset found" at install time.
 	var asset: String = CapnInstaller.expected_asset()
-	assert_true(KNOWN_ASSETS.has(asset), "expected_asset '%s' is one of the CI assets" % asset)
+	assert_true(_known_assets.has(asset), "expected_asset '%s' is one of the CI assets" % asset)
 
 
 func test_extract_binary_round_trips_a_zip() -> void:
@@ -33,7 +33,7 @@ func test_extract_binary_round_trips_a_zip() -> void:
 	f.close()
 
 	var inst: CapnInstaller = CapnInstaller.new()
-	var out_path: String = inst._extract_binary(zip_bytes)
+	var out_path: String = inst.extract_binary(zip_bytes)
 	inst.free()
 
 	assert_false(out_path.is_empty(), "extraction returned a path")

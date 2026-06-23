@@ -7,8 +7,8 @@ extends SceneTree
 
 const ID: int = 123456
 const NAME: String = "Alice"
-const TAGS: PackedStringArray = ["alpha", "bravo", "charlie"]
-const SCORES: PackedInt32Array = [10, -20, 30]
+var _tags: PackedStringArray = ["alpha", "bravo", "charlie"]
+var _scores: PackedInt32Array = [10, -20, 30]
 const NOTE: String = "child note"
 const BANNED: String = "spam"
 
@@ -34,10 +34,10 @@ func _build(path: String) -> int:
 	var root: InteropCapnp.Root.Builder = InteropCapnp.new_root()
 	root.set_id(ID)
 	root.set_name(NAME)
-	var tags: CapnBuilder.ListBuilder = root.init_tags(TAGS.size())
-	for i: int in TAGS.size():
-		tags.set_text(i, TAGS[i])
-	root.set_scores(SCORES)
+	var tags: CapnBuilder.ListBuilder = root.init_tags(_tags.size())
+	for i: int in _tags.size():
+		tags.set_text(i, _tags[i])
+	root.set_scores(_scores)
 	var child: InteropCapnp.Child.Builder = root.init_child()
 	child.set_note(NOTE)
 	root.set_kind(InteropCapnp.Kind.BETA)
@@ -65,9 +65,9 @@ func _verify(path: String) -> int:
 	ok = _check(r.get_id() == ID, "id") and ok
 	ok = _check(r.get_name() == NAME, "name") and ok
 	var tags: Array = r.get_tags()
-	ok = _check(tags.size() == TAGS.size() and tags[0] == TAGS[0] and tags[2] == TAGS[2], "tags") and ok
+	ok = _check(tags.size() == _tags.size() and tags[0] == _tags[0] and tags[2] == _tags[2], "tags") and ok
 	var scores: Array = r.get_scores()
-	ok = _check(scores.size() == SCORES.size() and scores[1] == SCORES[1], "scores") and ok
+	ok = _check(scores.size() == _scores.size() and scores[1] == _scores[1], "scores") and ok
 	ok = _check(r.get_child().get_note() == NOTE, "child.note") and ok
 	ok = _check(r.get_kind() == InteropCapnp.Kind.BETA, "kind") and ok
 	ok = _check(r.is_status_banned() and r.get_status_banned() == BANNED, "status.banned") and ok

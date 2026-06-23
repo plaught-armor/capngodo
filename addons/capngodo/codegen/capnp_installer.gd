@@ -22,7 +22,7 @@ enum Stage { IDLE, FETCHING_RELEASE, DOWNLOADING }
 
 var _stage: Stage = Stage.IDLE
 # Created in _ready (needs the tree) — null until then, so an instance used only
-# for _extract_binary (e.g. in tests) allocates no HTTPRequest to leak.
+# for extract_binary (e.g. in tests) allocates no HTTPRequest to leak.
 var _http: HTTPRequest = null
 
 
@@ -106,7 +106,7 @@ func _handle_download(zip_bytes: PackedByteArray) -> void:
 	if zip_bytes.is_empty():
 		_fail("downloaded archive was empty")
 		return
-	var binary_path: String = _extract_binary(zip_bytes)
+	var binary_path: String = extract_binary(zip_bytes)
 	if binary_path.is_empty():
 		_fail("could not extract the capnp binary from the downloaded archive")
 		return
@@ -117,7 +117,7 @@ func _handle_download(zip_bytes: PackedByteArray) -> void:
 
 ## Write the single executable inside `zip_bytes` to the platform cache path,
 ## chmod +x on POSIX. Returns the path, or "" on failure.
-func _extract_binary(zip_bytes: PackedByteArray) -> String:
+func extract_binary(zip_bytes: PackedByteArray) -> String:
 	var cache: String = CapnTool.cache_dir()
 	if not DirAccess.dir_exists_absolute(cache) and DirAccess.make_dir_recursive_absolute(cache) != OK:
 		push_error("[CapnInstaller] cannot create cache dir %s" % cache)
