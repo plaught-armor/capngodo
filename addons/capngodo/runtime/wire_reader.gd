@@ -53,6 +53,15 @@ class Message extends RefCounted:
 	# per-pointer-dereference alloc on the decode hot path.
 	var _scratch: CapnTarget = CapnTarget.new()
 
+	# Reused scratch pointers for the decode hot path — every follow() decodes a
+	# pointer word into one of these instead of allocating a fresh CapnPointer.
+	# Two slots: a far pointer's landing pad needs the original (drained to locals)
+	# plus an inner + tag word live at once, so the double-far arm uses both _ptr_a
+	# (inner) and _ptr_b (tag). Same single-threaded, drain-before-next-decode
+	# safety as _scratch above.
+	var _ptr_a: CapnPointer = CapnPointer.new()
+	var _ptr_b: CapnPointer = CapnPointer.new()
+
 
 	# Reset the scratch to a null target and return it — used on every
 	# null/out-of-bounds/limit path in place of CapnTarget.new().
@@ -60,6 +69,14 @@ class Message extends RefCounted:
 		_scratch.is_null = true
 		_scratch.is_cap = false
 		return _scratch
+
+
+	# Decode the pointer word at (seg_id, word_off) into the shared scratch and
+	# return it — lets ListReader.from_target read a composite tag without its own
+	# alloc. Only safe once follow() has drained its decode into a CapnTarget.
+	func decode_ptr(seg_id: int, word_off: int) -> CapnPointer:
+		CapnPointer.decode_at_into(_ptr_a, segments.segments[seg_id], word_off * WORD_BYTES)
+		return _ptr_a
 
 
 	func get_root() -> StructReader:
@@ -91,7 +108,8 @@ class Message extends RefCounted:
 		if not segments.words_in_bounds(seg_id, ptr_word_off, 1):
 			fail("pointer word out of bounds (seg %d word %d)" % [seg_id, ptr_word_off])
 			return null_target()
-		var ptr: CapnPointer = CapnPointer.decode_at(segments.segments[seg_id], ptr_word_off * WORD_BYTES)
+		var ptr: CapnPointer = _ptr_a
+		CapnPointer.decode_at_into(ptr, segments.segments[seg_id], ptr_word_off * WORD_BYTES)
 		if ptr.is_null:
 			return null_target() # null target (not an error)
 		if ptr.kind == CapnPointer.Kind.FAR:
@@ -107,8 +125,12 @@ class Message extends RefCounted:
 			if not segments.words_in_bounds(seg, pad_word, 2):
 				fail("double-far landing pad out of bounds")
 				return null_target()
-			var inner: CapnPointer = CapnPointer.decode_at(segments.segments[seg], pad_word * WORD_BYTES)
-			var tag: CapnPointer = CapnPointer.decode_at(segments.segments[seg], (pad_word + 1) * WORD_BYTES)
+			# far (== _ptr_a) is drained to seg/pad_word above; reuse it for inner,
+			# _ptr_b for tag — both stay live through _target_from_pointer below.
+			var inner: CapnPointer = _ptr_a
+			CapnPointer.decode_at_into(inner, segments.segments[seg], pad_word * WORD_BYTES)
+			var tag: CapnPointer = _ptr_b
+			CapnPointer.decode_at_into(tag, segments.segments[seg], (pad_word + 1) * WORD_BYTES)
 			if inner.kind != CapnPointer.Kind.FAR or inner.far_two_word:
 				fail("double-far inner word is not a single far pointer")
 				return null_target()
@@ -118,7 +140,8 @@ class Message extends RefCounted:
 		if not segments.words_in_bounds(seg, pad_word, 1):
 			fail("far landing pad out of bounds")
 			return null_target()
-		var pad: CapnPointer = CapnPointer.decode_at(segments.segments[seg], pad_word * WORD_BYTES)
+		var pad: CapnPointer = _ptr_a
+		CapnPointer.decode_at_into(pad, segments.segments[seg], pad_word * WORD_BYTES)
 		if pad.kind == CapnPointer.Kind.FAR:
 			fail("far landing pad points to another far pointer")
 			return null_target()
@@ -434,14 +457,14 @@ class StructReader extends RefCounted:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_text()
+		return msg.text_from_target(t)
 
 
 	func get_data(ptr_index: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_data()
+		return msg.data_from_target(t)
 
 
 	func get_cap_index(ptr_index: int) -> int:
@@ -497,7 +520,9 @@ class ListReader extends RefCounted:
 		r.depth_remaining = depth_remaining
 		if t.elem_size_code == CapnPointer.ElemSize.COMPOSITE:
 			# content_word points at the tag word; tag.offset carries the count.
-			var tag: CapnPointer = CapnPointer.decode_at(msg.segments.segments[t.seg_id], t.content_word * WORD_BYTES)
+			# follow() has already drained its decode into `t`, so its scratch pointer
+			# is free to reuse for the tag word here.
+			var tag: CapnPointer = msg.decode_ptr(t.seg_id, t.content_word)
 			r.is_composite = true
 			r.count = tag.offset
 			r.comp_data_words = tag.data_words
@@ -670,14 +695,14 @@ class ListReader extends RefCounted:
 		var t: CapnTarget = _follow_elem(i)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_text()
+		return msg.text_from_target(t)
 
 
 	func get_data(i: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
 		var t: CapnTarget = _follow_elem(i)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
-		return ListReader.from_target(msg, t, depth_remaining - 1).to_data()
+		return msg.data_from_target(t)
 
 
 	func get_cap_index(i: int) -> int:

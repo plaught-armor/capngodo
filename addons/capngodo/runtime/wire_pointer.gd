@@ -70,26 +70,45 @@ var cap_is_valid: bool = false
 
 
 static func decode_at(buf: PackedByteArray, byte_off: int) -> CapnPointer:
+	var p: CapnPointer = CapnPointer.new()
+	decode_at_into(p, buf, byte_off)
+	return p
+
+
+## Populate `p` (a caller-owned scratch) from the pointer word at `byte_off`,
+## skipping the per-dereference CapnPointer.new() on the decode hot path. The
+## reader keeps a couple of these on the Message and reuses them across every
+## follow(); decode is single-threaded and the fields are drained into a
+## CapnTarget before the next decode, so one instance per slot is safe.
+static func decode_at_into(p: CapnPointer, buf: PackedByteArray, byte_off: int) -> void:
 	# Boundary guard: a past-end decode_u32 silently returns 0 in Godot, which
 	# would mask truncation as a null pointer. Fail loud instead. (CapnMessage
 	# owns the deeper validation that the pointed-to object fits its segment.)
 	if byte_off < 0 or byte_off + 8 > buf.size():
 		push_error("CapnPointer.decode_at: pointer word out of bounds at %d" % byte_off)
-		var bad: CapnPointer = CapnPointer.new()
-		bad.is_null = true
-		return bad
+		p.is_null = true
+		return
 	var lo: int = buf.decode_u32(byte_off)
 	var hi: int = buf.decode_u32(byte_off + 4)
-	return decode(lo, hi)
+	decode_into(p, lo, hi)
 
 
-# Wire->enum boundary: bit-extracted ints assigned to enum fields (D10a).
-@warning_ignore("int_as_enum_without_cast")
 static func decode(lo: int, hi: int) -> CapnPointer:
 	var p: CapnPointer = CapnPointer.new()
+	decode_into(p, lo, hi)
+	return p
+
+
+## In-place sibling of decode(). `p` may carry stale fields from a prior decode;
+## callers only read the subset selected by p.kind, and is_null is always reset
+## here, so cross-kind stale fields are never observed.
+# Wire->enum boundary: bit-extracted ints assigned to enum fields (D10a).
+@warning_ignore("int_as_enum_without_cast")
+static func decode_into(p: CapnPointer, lo: int, hi: int) -> void:
+	p.is_null = false
 	if lo == 0 and hi == 0:
 		p.is_null = true
-		return p
+		return
 	var a: int = lo & 0x3
 	p.kind = a
 	if a == Kind.STRUCT:
@@ -108,7 +127,6 @@ static func decode(lo: int, hi: int) -> CapnPointer:
 		var subkind: int = (lo >> 2) & _MASK_30
 		p.cap_is_valid = subkind == 0
 		p.cap_index = hi
-	return p
 
 # --- encode (each returns a fresh 8-byte word) ---------------------------
 
