@@ -19,8 +19,8 @@ extends RefCounted
 const WORD_BYTES: int = 8
 
 # Reused scratch for float -> bits, mirroring the reader.
-static var _f32_scratch: PackedByteArray = _make_scratch(4)
-static var _f64_scratch: PackedByteArray = _make_scratch(8)
+static var f32_scratch: PackedByteArray = _make_scratch(4)
+static var f64_scratch: PackedByteArray = _make_scratch(8)
 
 
 static func _make_scratch(n: int) -> PackedByteArray:
@@ -43,10 +43,10 @@ static func to_bytes(root: StructBuilder, packed: bool = false) -> PackedByteArr
 	return CapnPacked.pack(framed) if packed else framed
 
 
-static func _list_body_words(code: CapnPointer.ElemSize, count: int) -> int:
+static func list_body_words(code: CapnPointer.ElemSize, count: int) -> int:
 	if code == CapnPointer.ElemSize.VOID:
 		return 0
-	elif code == CapnPointer.ElemSize.BIT:
+	if code == CapnPointer.ElemSize.BIT:
 		@warning_ignore("integer_division")
 		var bit_words: int = (count + 63) / 64
 		return bit_words
@@ -107,7 +107,7 @@ class Arena extends RefCounted:
 	## zero) and write them. Returns the body location. Shared by text/data.
 	func alloc_bytes(bytes: PackedByteArray) -> Vector2i:
 		var n: int = bytes.size()
-		var words: int = CapnBuilder._list_body_words(CapnPointer.ElemSize.BYTE, n)
+		var words: int = CapnBuilder.list_body_words(CapnPointer.ElemSize.BYTE, n)
 		var seg: int = _pick(words)
 		var off: int = used_words[seg]
 		used_words[seg] += words
@@ -273,14 +273,14 @@ class StructBuilder extends RefCounted:
 
 
 	func set_f32(byte_off: int, value: float, default_bits: int = 0) -> void:
-		CapnBuilder._f32_scratch.encode_float(0, value)
-		var bits: int = CapnBuilder._f32_scratch.decode_u32(0) ^ default_bits
+		CapnBuilder.f32_scratch.encode_float(0, value)
+		var bits: int = CapnBuilder.f32_scratch.decode_u32(0) ^ default_bits
 		_buf().encode_u32(_d(byte_off), bits & 0xffffffff)
 
 
 	func set_f64(byte_off: int, value: float, default_bits: int = 0) -> void:
-		CapnBuilder._f64_scratch.encode_double(0, value)
-		var bits: int = CapnBuilder._f64_scratch.decode_u64(0) ^ default_bits
+		CapnBuilder.f64_scratch.encode_double(0, value)
+		var bits: int = CapnBuilder.f64_scratch.decode_u64(0) ^ default_bits
 		_buf().encode_u64(_d(byte_off), bits)
 
 
@@ -312,7 +312,7 @@ class StructBuilder extends RefCounted:
 
 	## Primitive/pointer list (non-composite). Element width comes from `code`.
 	func init_list(ptr_index: int, code: CapnPointer.ElemSize, count: int) -> ListBuilder:
-		var body: int = CapnBuilder._list_body_words(code, count)
+		var body: int = CapnBuilder.list_body_words(code, count)
 		var loc: Vector2i = arena.allocate(body)
 		arena.point_to_list(seg_id, ptr_word + ptr_index, loc, code, count)
 		return ListBuilder.make_primitive(arena, loc.x, loc.y, code, count)
@@ -431,13 +431,13 @@ class ListBuilder extends RefCounted:
 
 
 	func set_f32(i: int, value: float) -> void:
-		CapnBuilder._f32_scratch.encode_float(0, value)
-		_buf().encode_u32(_elem(i), CapnBuilder._f32_scratch.decode_u32(0))
+		CapnBuilder.f32_scratch.encode_float(0, value)
+		_buf().encode_u32(_elem(i), CapnBuilder.f32_scratch.decode_u32(0))
 
 
 	func set_f64(i: int, value: float) -> void:
-		CapnBuilder._f64_scratch.encode_double(0, value)
-		_buf().encode_u64(_elem(i), CapnBuilder._f64_scratch.decode_u64(0))
+		CapnBuilder.f64_scratch.encode_double(0, value)
+		_buf().encode_u64(_elem(i), CapnBuilder.f64_scratch.decode_u64(0))
 
 
 	func set_bool(i: int, value: bool) -> void:
@@ -520,7 +520,7 @@ class ListBuilder extends RefCounted:
 	## be a pointer-element list), returns the inner list's builder. Mirror of
 	## StructBuilder.init_list but anchored at element word i (CG10 List(List(T))).
 	func init_list_at(i: int, code: CapnPointer.ElemSize, n: int) -> ListBuilder:
-		var body: int = CapnBuilder._list_body_words(code, n)
+		var body: int = CapnBuilder.list_body_words(code, n)
 		var loc: Vector2i = arena.allocate(body)
 		arena.point_to_list(seg_id, first_elem_word + i, loc, code, n)
 		return ListBuilder.make_primitive(arena, loc.x, loc.y, code, n)
