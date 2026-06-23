@@ -38,10 +38,15 @@ result on the tested paths — these are gaps, edges, and polish.
 
 ## Runtime perf (measure-first — DOD inline checklist)
 
+Measured 2026-06-23 with `tools/bench.gd` (AddressBook ×1000 people = 156 KiB,
+80 iters, Godot 4.8.dev). Baseline throughput: build ~8.2 MB/s, decode ~4.3 MB/s
+(slowest), pack ~18 MB/s, unpack ~15 MB/s. **Both micro-opts measured as
+regressions — refuted, do not reland without new evidence.**
+
 | id | pri | item | notes |
 |---|---|---|---|
-| RT1 | P3 | **Packed codec hot-loop allocs** | `wire_packed` builds output via per-word `append`; pre-size + indexed writes if profiling shows it. |
-| RT2 | P3 | **Reader `_buf()` 3-hop** | `msg.segments.segments[seg_id]` per primitive read; cache the buffer ref in the reader if hot. |
+| RT1 | 🚫 | **Packed codec hot-loop allocs** | Refuted. Pre-sized output + index-cursor writes (`out[c] = b`) ran *slower* (pack 8.75 → 9.45 ms): GDScript `PackedByteArray[i] = b` is a per-element Variant set; the batched C++ `append_array` of a per-word `content` array beats it. The per-word alloc is not the bottleneck — manual byte loops are. Left as-is. |
+| RT2 | 🚫 | **Reader `_buf()` 3-hop** | Refuted. Lazy-caching `msg.segments.segments[seg_id]` in the reader (bool guard + cached `PackedByteArray`) added a per-call branch for no win (decode 36.9 → 38.6 ms). The 3-hop is cheap (CoW ref share + fast property access); decode cost is allocation-bound (String materialization in `to_text`, `Array[Reader]` in list getters), not pointer-chase. Left as-is. |
 | RT3 | P3 | **`read_u64` naming** | `CapnWireWords.read_u64` returns a possibly-negative bit pattern; consider `read_u64_bits` to surface that. No callers today. |
 
 ## Packaging (the rest of M7)
