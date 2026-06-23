@@ -115,13 +115,13 @@ static func _walk(node: CapnReader.StructReader, prefix: String, by_id: Dictiona
 		var nn: CapnReader.StructReader = nested.get_struct(i)
 		var name: String = CapnSchema.nested_name(nn)
 		var id: int = CapnSchema.nested_id(nn)
-		var flat: String = _uniquify(_safe_type((prefix + "_" + name) if prefix != "" else name), used)
+		var flat: String = _uniquify(_safe_type((prefix + "_" + name) if not prefix.is_empty() else name), used)
 		var child: CapnReader.StructReader = by_id.get(id)
 		if child == null:
 			continue
 		used[flat] = true
 		flat_by_id[id] = flat
-		result.append(CodegenEntry.new(id, flat, child, prefix == ""))
+		result.append(CodegenEntry.new(id, flat, child, prefix.is_empty()))
 		_walk(child, flat, by_id, result, flat_by_id, used)
 
 
@@ -238,7 +238,7 @@ static func _emit_const(lines: PackedStringArray, entry: CodegenEntry, flat_by_i
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	var name: String = _safe_enum_member(_snake(entry.flat).to_upper())
 	var lit: String = _const_literal(CapnSchema.const_value(entry.node), tw)
-	if lit == "":
+	if lit.is_empty():
 		lines.append("# TODO: const '%s' of type %d (unsupported value kind)" % [name, tw])
 		lines.append("")
 		return
@@ -390,7 +390,7 @@ static func _emit_field_union_enums(lines: PackedStringArray, prefix: String, fi
 	for i: int in fields.size():
 		var gf: CapnReader.StructReader = fields.get_struct(i)
 		var fname: String = _snake(CapnSchema.field_name(gf))
-		var full: String = ("%s_%s" % [prefix, fname]) if prefix != "" else fname
+		var full: String = ("%s_%s" % [prefix, fname]) if not prefix.is_empty() else fname
 		var un: CapnReader.StructReader = _union_node(gf, by_id)
 		if un != null:
 			_emit_union_enum(lines, full, un)
@@ -469,7 +469,7 @@ static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnR
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	if tw == CapnSchema.TypeWhich.VOID:
 		return
-	if tw == CapnSchema.TypeWhich.STRUCT and flat_override != "":
+	if tw == CapnSchema.TypeWhich.STRUCT and not flat_override.is_empty():
 		lines.append("")
 		lines.append(TAB + TAB + "func get_%s() -> %s.Reader:" % [suffix, flat_override])
 		lines.append(TAB + TAB + TAB + "return %s.Reader.wrap(_r.get_struct(%d))" % [flat_override, off])
@@ -594,7 +594,7 @@ static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.Stru
 		return "Array"  # List(Void): length-only, elements are null (AnyPointer handled in _emit_list_getter, CG10b)
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _struct_flat(elem, flat_by_id)
-		return ("Array[%s.Reader]" % flat) if flat != "" else "Array"
+		return ("Array[%s.Reader]" % flat) if not flat.is_empty() else "Array"
 	return "Array[%s]" % _return_type(ew, elem, flat_by_id)
 
 
@@ -668,14 +668,14 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 		_emit_list_setter(lines, suffix, off, CapnSchema.type_list_element(t), flat_by_id, disc_line)
 		return
 	if tw == CapnSchema.TypeWhich.STRUCT:
-		var child: String = flat_override if flat_override != "" else _struct_flat(t, flat_by_id)
-		if child == "":
+		var child: String = flat_override if not flat_override.is_empty() else _struct_flat(t, flat_by_id)
+		if child.is_empty():
 			lines.append("")
 			lines.append(TAB + TAB + "# TODO(M6): init '%s' (unresolved cross-file struct)" % suffix)
 			return
 		lines.append("")
 		lines.append(TAB + TAB + "func init_%s() -> %s.Builder:" % [suffix, child])
-		if disc_line != "":
+		if not disc_line.is_empty():
 			lines.append(disc_line)
 		lines.append(TAB + TAB + TAB + "return %s.Builder.wrap(_b.init_struct(%d, %s.DATA_WORDS, %s.PTR_WORDS))" % [child, off, child, child])
 		return
@@ -686,7 +686,7 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 		# Capability field: no RPC layer to inject a cap. As a union arm it still
 		# needs a selector that writes the discriminant(s) (so the arm is
 		# reachable); the cap itself stays unset. A plain field gets no setter.
-		if disc_line != "":
+		if not disc_line.is_empty():
 			lines.append("")
 			lines.append(TAB + TAB + "func set_%s() -> void:  # selects this arm; the capability stays unset (no RPC)" % suffix)
 			lines.append(disc_line)
@@ -696,7 +696,7 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 		return
 	lines.append("")
 	lines.append(TAB + TAB + "func set_%s(value: %s) -> void:" % [suffix, _return_type(tw, t, flat_by_id)])
-	if disc_line != "":
+	if not disc_line.is_empty():
 		lines.append(disc_line)
 	# Text/Data writes carry no XOR default (set_text/set_data ignore `def`), so
 	# skip computing the default literal for them — value_text/value_data +
@@ -715,27 +715,27 @@ static func _emit_slot_setter(lines: PackedStringArray, suffix: String, f: CapnR
 static func _emit_anyptr_setter(lines: PackedStringArray, suffix: String, off: int, disc_line: String) -> void:
 	lines.append("")
 	lines.append(TAB + TAB + "func init_%s_struct(data_words: int, ptr_words: int) -> CapnBuilder.StructBuilder:" % suffix)
-	if disc_line != "":
+	if not disc_line.is_empty():
 		lines.append(disc_line)
 	lines.append(TAB + TAB + TAB + "return _b.init_struct(%d, data_words, ptr_words)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func init_%s_list(elem_size: CapnPointer.ElemSize, count: int) -> CapnBuilder.ListBuilder:" % suffix)
-	if disc_line != "":
+	if not disc_line.is_empty():
 		lines.append(disc_line)
 	lines.append(TAB + TAB + TAB + "return _b.init_list(%d, elem_size, count)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func init_%s_composite_list(count: int, data_words: int, ptr_words: int) -> CapnBuilder.ListBuilder:" % suffix)
-	if disc_line != "":
+	if not disc_line.is_empty():
 		lines.append(disc_line)
 	lines.append(TAB + TAB + TAB + "return _b.init_composite_list(%d, count, data_words, ptr_words)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func set_%s_text(value: String) -> void:" % suffix)
-	if disc_line != "":
+	if not disc_line.is_empty():
 		lines.append(disc_line)
 	lines.append(TAB + TAB + TAB + "_b.set_text(%d, value)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func set_%s_data(value: PackedByteArray) -> void:" % suffix)
-	if disc_line != "":
+	if not disc_line.is_empty():
 		lines.append(disc_line)
 	lines.append(TAB + TAB + TAB + "_b.set_data(%d, value)" % off)
 
@@ -754,19 +754,19 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		# i, code, n) / init_composite_list_at(i, n, dw, pw) / set_text(i, s) /
 		# set_data(i, bytes) (CG10b). Mirrors the getter's raw-ListReader return.
 		lines.append(TAB + TAB + "func init_%s(n: int) -> CapnBuilder.ListBuilder:" % fname)
-		if disc_line != "":
+		if not disc_line.is_empty():
 			lines.append(disc_line)
 		lines.append(TAB + TAB + TAB + "return _b.init_list(%d, CapnPointer.ElemSize.POINTER, n)" % off)
 		return
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var child: String = _flat_of(elem, flat_by_id)
-		if child == "":
+		if child.is_empty():
 			lines.append(TAB + TAB + "# TODO(M6): init '%s' (unresolved cross-file struct list)" % fname)
 			return
 		# Composite list -> typed Array of element Builders.
 		var arr: String = "Array[%s.Builder]" % child
 		lines.append(TAB + TAB + "func init_%s(n: int) -> %s:" % [fname, arr])
-		if disc_line != "":
+		if not disc_line.is_empty():
 			lines.append(disc_line)
 		lines.append(TAB + TAB + TAB + "var lb: CapnBuilder.ListBuilder = _b.init_composite_list(%d, n, %s.DATA_WORDS, %s.PTR_WORDS)" % [off, child, child])
 		lines.append(TAB + TAB + TAB + "var out: %s = []" % arr)
@@ -781,7 +781,7 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 	# and the caller fills each element via lb.init_list_at / init_composite_list_at
 	# (CG10).
 	lines.append(TAB + TAB + "func init_%s(n: int) -> CapnBuilder.ListBuilder:" % fname)
-	if disc_line != "":
+	if not disc_line.is_empty():
 		lines.append(disc_line)
 	lines.append(TAB + TAB + TAB + "return _b.init_list(%d, %s, n)" % [off, _elem_size_token(ew)])
 
@@ -1059,7 +1059,7 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 		return "%s.get_f64(%d, %s)" % [recv, off * 8, def]
 	elif tw == CapnSchema.TypeWhich.ENUM:
 		var eflat: String = _flat_of(t, flat_by_id)
-		if eflat == "":
+		if eflat.is_empty():
 			return "%s.get_u16(%d, %s)" % [recv, off * 2, def]
 		return "%s.get_u16(%d, %s) as %s" % [recv, off * 2, def, eflat]
 	elif tw == CapnSchema.TypeWhich.TEXT:
@@ -1068,7 +1068,7 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 		return "%s.get_data(%d, %s)" % [recv, off, def]
 	elif tw == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _struct_flat(t, flat_by_id)
-		if flat == "":
+		if flat.is_empty():
 			return "null  # TODO(M6): unresolved cross-file struct"
 		return "%s.Reader.wrap(%s.get_struct(%d))" % [flat, recv, off]
 	elif tw == CapnSchema.TypeWhich.INTERFACE:
@@ -1087,7 +1087,7 @@ static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructRea
 		return "lr.get_cap_index(i)"  # List(interface): cap-table index, -1 absent (CG10)
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _struct_flat(elem, flat_by_id)
-		if flat == "":
+		if flat.is_empty():
 			return "null  # TODO(M6): unresolved cross-file struct"
 		return "%s.Reader.wrap(lr.get_struct(i))" % flat
 	elif ew == CapnSchema.TypeWhich.TEXT:
@@ -1111,7 +1111,7 @@ static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructRea
 	elif ew == CapnSchema.TypeWhich.ENUM:
 		# Match the Array[<Enum>] container type emitted by _list_container_type.
 		var eflat: String = _flat_of(elem, flat_by_id)
-		return ("lr.get_u16(i) as %s" % eflat) if eflat != "" else "lr.get_u16(i)"
+		return ("lr.get_u16(i) as %s" % eflat) if not eflat.is_empty() else "lr.get_u16(i)"
 	elif ew == CapnSchema.TypeWhich.UINT32:
 		return "lr.get_u32(i)"
 	elif ew == CapnSchema.TypeWhich.UINT64:
@@ -1134,12 +1134,12 @@ static func _return_type(tw: CapnSchema.TypeWhich, t: CapnReader.StructReader, f
 		return "PackedByteArray"
 	elif tw == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _struct_flat(t, flat_by_id)
-		return ("%s.Reader" % flat) if flat != "" else "Variant"
+		return ("%s.Reader" % flat) if not flat.is_empty() else "Variant"
 	elif tw == CapnSchema.TypeWhich.ENUM:
 		# Enum at the API boundary (D10a): return the generated enum type for
 		# autocomplete; int underneath. Cross-file enum (unresolved) -> int.
 		var flat: String = _flat_of(t, flat_by_id)
-		return flat if flat != "" else "int"
+		return flat if not flat.is_empty() else "int"
 	elif tw == CapnSchema.TypeWhich.INTERFACE:
 		return "int"  # cap-table index
 	# int8..uint64 -> int
@@ -1464,7 +1464,7 @@ static func _arg_name_of_type(t: CapnReader.StructReader, flat_by_id: Dictionary
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	if tw == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = flat_by_id.get(CapnSchema.type_id(t), "")
-		var base: String = _basename(flat) if flat != "" else "Struct"
+		var base: String = _basename(flat) if not flat.is_empty() else "Struct"
 		# A generic arg that is itself an instantiation appends its own args, so
 		# Box(Box(Text)) -> Box_Box_Text (distinct from Box(Box(Int32))).
 		var scope: CapnReader.StructReader = _find_bind_scope(t)
@@ -1475,7 +1475,7 @@ static func _arg_name_of_type(t: CapnReader.StructReader, flat_by_id: Dictionary
 		return base
 	if tw == CapnSchema.TypeWhich.ENUM or tw == CapnSchema.TypeWhich.INTERFACE:
 		var flat: String = flat_by_id.get(CapnSchema.type_id(t), "")
-		return _basename(flat) if flat != "" else _capnp_kind_name(tw)
+		return _basename(flat) if not flat.is_empty() else _capnp_kind_name(tw)
 	if tw == CapnSchema.TypeWhich.LIST:
 		return "List_" + _arg_name_of_type(CapnSchema.type_list_element(t), flat_by_id)
 	return _capnp_kind_name(tw)
