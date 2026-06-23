@@ -1,0 +1,15 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://examples/network_packet/demo.gd" id="1_demo"]
+
+[node name="NetworkPacketDemo" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+script = ExtResource("1_demo")
+
+[node name="Output" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 15
+offset_left = 12.0
+offset_top = 12.0
+text = "Encoding chat/move/spawn packets… (see console)"

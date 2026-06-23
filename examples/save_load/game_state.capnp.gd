@@ -64,9 +64,9 @@ class GameState extends RefCounted:
 		func get_pos_y() -> float:
 			return _r.get_f32(12, 0)
 
-		func get_inventory() -> Array:
+		func get_inventory() -> Array[Item.Reader]:
 			var lr: CapnReader.ListReader = _r.get_list(1)
-			var out: Array = []
+			var out: Array[Item.Reader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
 				out[i] = Item.Reader.wrap(lr.get_struct(i))
@@ -98,9 +98,9 @@ class GameState extends RefCounted:
 		func set_pos_y(value: float) -> void:
 			_b.set_f32(12, value, 0)
 
-		func init_inventory(n: int) -> Array:
+		func init_inventory(n: int) -> Array[Item.Builder]:
 			var lb: CapnBuilder.ListBuilder = _b.init_composite_list(1, n, Item.DATA_WORDS, Item.PTR_WORDS)
-			var out: Array = []
+			var out: Array[Item.Builder] = []
 			out.resize(n)
 			for i: int in n:
 				out[i] = Item.Builder.wrap(lb.init_struct(i))
