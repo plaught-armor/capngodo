@@ -517,7 +517,78 @@ class StructReader extends RefCounted:
 		out.set_from_target(msg, t, depth_remaining - 1)
 
 
-	func get_list(ptr_index: int) -> ListReader:
+	## Inlined list read, twin of the get_text fast path: decode the list pointer,
+	## bounds-check + charge, and populate one ListReader (composite tag decoded
+	## inline) in a single frame. List(struct) is the hottest non-text getter.
+	## Far / non-list / depth / limit fall to _get_list_slow before any charge.
+	## Semantics match ListReader.from_target — see test_wire_inline_list.gd.
+	# Wire->enum boundary: bit-extracted codes assigned to enum fields (D10a).
+	@warning_ignore("int_as_enum_without_cast") func get_list(ptr_index: int) -> ListReader:
+		if ptr_index < 0 or ptr_index >= ptr_words:
+			return ListReader.empty(msg)
+		if depth_remaining <= 0:
+			return _get_list_slow(ptr_index)
+		var word_off: int = ptr_word + ptr_index
+		var seg: PackedByteArray = msg.segments.segments[seg_id]
+		var seg_words: int = seg.size() >> 3
+		if word_off >= seg_words:
+			return _get_list_slow(ptr_index)
+		var pbase: int = word_off * WORD_BYTES
+		var lo: int = seg.decode_u32(pbase)
+		var hi: int = seg.decode_u32(pbase + 4)
+		if lo == 0 and hi == 0:
+			return ListReader.empty(msg) # null pointer -> empty list
+		if (lo & 0x3) != CapnPointer.Kind.LIST:
+			return _get_list_slow(ptr_index) # far / struct / cap (far handled in slow)
+		var off30: int = (lo >> 2) & 0x3FFFFFFF
+		if off30 >= 0x20000000:
+			off30 -= 0x40000000
+		var content_word: int = word_off + 1 + off30
+		var ecode: int = hi & 0x7
+		var ecount: int = (hi >> 3) & 0x1FFFFFFF
+		# Physical span in words (mirrors Message._list_body_words, inlined).
+		var span: int = 0
+		if ecode == CapnPointer.ElemSize.COMPOSITE:
+			span = 1 + ecount
+		elif ecode == CapnPointer.ElemSize.VOID:
+			span = 0
+		elif ecode == CapnPointer.ElemSize.BIT:
+			span = (ecount + 63) >> 6 # ceil(bits / 64)
+		else:
+			span = (ecount * CapnPointer.elem_size_bytes(ecode) + 7) >> 3
+		if content_word < 0 or content_word + span > seg_words:
+			return _get_list_slow(ptr_index)
+		msg.traversal_words_used += span if span > 0 else 1
+		if msg.traversal_words_used > msg.limits.traversal_word_limit:
+			msg.fail("traversal limit exceeded")
+			return ListReader.empty(msg)
+		var r: ListReader = ListReader.new()
+		r.msg = msg
+		r.seg_id = seg_id
+		r.depth_remaining = depth_remaining - 1
+		r.elem_size_code = ecode
+		if ecode == CapnPointer.ElemSize.COMPOSITE:
+			# Composite tag is struct-pointer-shaped; its offset field carries the count.
+			var tbase: int = content_word * WORD_BYTES
+			var tag_lo: int = seg.decode_u32(tbase)
+			var tag_hi: int = seg.decode_u32(tbase + 4)
+			var cnt: int = (tag_lo >> 2) & 0x3FFFFFFF
+			if cnt >= 0x20000000:
+				cnt -= 0x40000000
+			r.is_composite = true
+			r.count = cnt
+			r.comp_data_words = tag_hi & 0xffff
+			r.comp_ptr_words = (tag_hi >> 16) & 0xffff
+			r.step_words = r.comp_data_words + r.comp_ptr_words
+			r.first_elem_word = content_word + 1
+		else:
+			r.count = ecount
+			r.first_elem_word = content_word
+			r.step_bytes = CapnPointer.elem_size_bytes(ecode)
+		return r
+
+
+	func _get_list_slow(ptr_index: int) -> ListReader:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return ListReader.empty(msg)
