@@ -107,19 +107,34 @@ class Arena extends RefCounted:
 	## zero) and write them. Returns the body location. Shared by text/data.
 	func alloc_bytes(bytes: PackedByteArray) -> Vector2i:
 		var n: int = bytes.size()
-		var loc: Vector2i = allocate(CapnBuilder._list_body_words(CapnPointer.ElemSize.BYTE, n))
-		var base: int = loc.y * WORD_BYTES
-		for k: int in n:
-			segments[loc.x][base + k] = bytes[k]
-		return loc
+		var words: int = CapnBuilder._list_body_words(CapnPointer.ElemSize.BYTE, n)
+		var seg: int = _pick(words)
+		var off: int = used_words[seg]
+		used_words[seg] += words
+		# append_array mutates segments[seg] in place; one memcpy + a zero-pad
+		# resize replaces the per-byte write loop. Relies on the invariant that
+		# segments[seg] is sized exactly used_words[seg]*8 before this (every
+		# allocator here grows to that), so the append lands at offset `off`.
+		if n > 0:
+			segments[seg].append_array(bytes)
+		var end_bytes: int = used_words[seg] * WORD_BYTES
+		if segments[seg].size() < end_bytes:
+			segments[seg].resize(end_bytes) # zero-pad to the word boundary
+		return Vector2i(seg, off)
 
 	# --- pointer writing ---------------------------------------------------
 
 
 	## Write a struct pointer at (psg, pword) referencing the struct at `target`.
+	## The common same-segment case writes the two pointer-word halves straight
+	## into the segment (the encode_struct bit math, inlined) — no throwaway
+	## 8-byte PackedByteArray + decode round-trip per pointer. Cross-segment keeps
+	## the layered encode (rare; only when cap_words forces a split).
 	func point_to_struct(psg: int, pword: int, target: Vector2i, dw: int, pw: int) -> void:
 		if psg == target.x:
-			_put(psg, pword, CapnPointer.encode_struct(target.y - (pword + 1), dw, pw))
+			var off: int = target.y - (pword + 1)
+			# Kind.STRUCT == 0; low 2 bits stay clear.
+			_put_words(psg, pword, (off & 0x3FFFFFFF) << 2, (dw & 0xffff) | ((pw & 0xffff) << 16))
 		else:
 			_double_far(psg, pword, target, CapnPointer.encode_struct(0, dw, pw))
 
@@ -128,9 +143,22 @@ class Arena extends RefCounted:
 	## (non-composite) or the word count excluding the tag (composite).
 	func point_to_list(psg: int, pword: int, target: Vector2i, code: CapnPointer.ElemSize, size_field: int) -> void:
 		if psg == target.x:
-			_put(psg, pword, CapnPointer.encode_list(target.y - (pword + 1), code, size_field))
+			var off: int = target.y - (pword + 1)
+			# Kind.LIST == 1.
+			_put_words(
+				psg,
+				pword,
+				1 | ((off & 0x3FFFFFFF) << 2),
+				(code & 0x7) | ((size_field & 0x1FFFFFFF) << 3),
+			)
 		else:
 			_double_far(psg, pword, target, CapnPointer.encode_list(0, code, size_field))
+
+
+	## Composite-list tag word (struct-pointer-shaped; offset field carries the
+	## element count) written directly — the encode_composite_tag math inlined.
+	func put_composite_tag(seg: int, word: int, count: int, dw: int, pw: int) -> void:
+		_put_words(seg, word, (count & 0x3FFFFFFF) << 2, (dw & 0xffff) | ((pw & 0xffff) << 16))
 
 
 	## Cross-segment reference as a double-far pointer (encoding.md :239-249):
@@ -148,6 +176,15 @@ class Arena extends RefCounted:
 		var base: int = word * WORD_BYTES
 		segments[seg].encode_u32(base, eight_bytes.decode_u32(0))
 		segments[seg].encode_u32(base + 4, eight_bytes.decode_u32(4))
+
+
+	## Write a pointer word from its two precomputed u32 halves — the alloc-free
+	## path the inline point_to_* / put_composite_tag use instead of building an
+	## encode_* PackedByteArray and decoding it straight back.
+	func _put_words(seg: int, word: int, lo: int, hi: int) -> void:
+		var base: int = word * WORD_BYTES
+		segments[seg].encode_u32(base, lo & 0xFFFFFFFF)
+		segments[seg].encode_u32(base + 4, hi & 0xFFFFFFFF)
 
 # =========================================================================
 # StructBuilder — write a struct's data + pointer sections.
@@ -286,7 +323,7 @@ class StructBuilder extends RefCounted:
 		var step: int = dw + pw
 		var total: int = 1 + count * step
 		var loc: Vector2i = arena.allocate(total)
-		arena._put(loc.x, loc.y, CapnPointer.encode_composite_tag(count, dw, pw))
+		arena.put_composite_tag(loc.x, loc.y, count, dw, pw)
 		arena.point_to_list(seg_id, ptr_word + ptr_index, loc, CapnPointer.ElemSize.COMPOSITE, count * step)
 		return ListBuilder.make_composite(arena, loc.x, loc.y + 1, count, dw, pw)
 
@@ -495,7 +532,7 @@ class ListBuilder extends RefCounted:
 		var step: int = dw + pw
 		var total: int = 1 + n * step
 		var loc: Vector2i = arena.allocate(total)
-		arena._put(loc.x, loc.y, CapnPointer.encode_composite_tag(n, dw, pw))
+		arena.put_composite_tag(loc.x, loc.y, n, dw, pw)
 		arena.point_to_list(seg_id, first_elem_word + i, loc, CapnPointer.ElemSize.COMPOSITE, n * step)
 		return ListBuilder.make_composite(arena, loc.x, loc.y + 1, n, dw, pw)
 
