@@ -875,6 +875,22 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + TAB + TAB + "lb.fill_struct(i, e)")
 		lines.append(TAB + TAB + TAB + TAB + "out[i] = e")
 		lines.append(TAB + TAB + TAB + "return out")
+		# Opt-in lazy writer: one reused element Builder repositioned per step, no
+		# Array. `for e in b.init_<f>_iter(n): e.set_*(...)`. The yielded builder is
+		# a cursor (set fields, don't retain) — mirror of the reader's iter_*().
+		lines.append("")
+		lines.append(TAB + TAB + "func init_%s_iter(n: int) -> CapnBuilder.StructListBuilderIter:" % fname)
+		if not disc_line.is_empty():
+			lines.append(disc_line)
+		lines.append(
+			(
+					TAB + TAB + TAB
+					+ (
+							"return CapnBuilder.StructListBuilderIter.new(self.init_composite_list(%d, n, %s.DATA_WORDS, %s.PTR_WORDS), %s.Builder.new())"
+							% [off, child, child, child]
+					)
+			),
+		)
 		return
 	# Bulk primitive list: set the whole field from a Packed*Array, symmetric with
 	# the Packed* getter. (Build loops internally — no GDScript blit — but the

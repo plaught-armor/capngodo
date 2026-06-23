@@ -556,3 +556,47 @@ class ListBuilder extends RefCounted:
 
 	func _buf() -> PackedByteArray:
 		return arena.segments[seg_id]
+
+# =========================================================================
+# StructListBuilderIter — lazy writer over a composite List(struct). Yields ONE
+# reused element Builder, repositioned each step via ListBuilder.fill_struct, so
+# a `for e in it:` write-loop allocates a single element builder instead of N.
+# Mirror of CapnReader.StructListIter on the write side. The yielded builder is a
+# cursor valid only for the current step: set its fields, never retain it.
+# =========================================================================
+
+
+class StructListBuilderIter extends RefCounted:
+	var _list: ListBuilder = null
+	var _elem: StructBuilder = null
+	var _n: int = 0
+
+
+	func _init(p_list: ListBuilder, p_elem: StructBuilder) -> void:
+		_list = p_list
+		_elem = p_elem
+		_n = p_list.size()
+
+
+	func _iter_init(it: Array) -> bool:
+		it[0] = 0
+		if _n > 0:
+			_list.fill_struct(0, _elem)
+		return _n > 0
+
+
+	func _iter_next(it: Array) -> bool:
+		it[0] += 1
+		var i: int = it[0]
+		if i >= _n:
+			return false
+		_list.fill_struct(i, _elem)
+		return true
+
+
+	func _iter_get(_it: Variant) -> StructBuilder:
+		return _elem
+
+
+	func size() -> int:
+		return _n
