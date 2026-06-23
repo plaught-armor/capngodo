@@ -524,14 +524,100 @@ class StructReader extends RefCounted:
 		return ListReader.from_target(msg, t, depth_remaining - 1)
 
 
-	func get_text(ptr_index: int, default_value: String = "") -> String:
+	## Fully-inlined Text read for the common case: an in-segment, in-bounds
+	## non-far byte list. Inlines _follow_ptr + follow_flat + the byte-list bounds
+	## + traversal charge + the slice/utf8 decode into one frame (no nested calls
+	## on the hot path), since Text dominates real payloads. Anything else (absent,
+	## null, far, composite, depth/limit) falls to _get_text_slow BEFORE any
+	## traversal charge, so the slow re-follow never double-counts. Semantics match
+	## the layered path exactly — see test_wire_inline_text.gd.
+	# Wire->enum boundary: bit-extracted codes compared against enum values (D10a).
+	@warning_ignore("int_as_enum_without_cast") func get_text(ptr_index: int, default_value: String = "") -> String:
+		if ptr_index < 0 or ptr_index >= ptr_words:
+			return default_value
+		if depth_remaining <= 0:
+			return _get_text_slow(ptr_index, default_value)
+		var word_off: int = ptr_word + ptr_index
+		var seg: PackedByteArray = msg.segments.segments[seg_id]
+		var seg_words: int = seg.size() >> 3
+		if word_off >= seg_words:
+			return _get_text_slow(ptr_index, default_value)
+		var pbase: int = word_off * WORD_BYTES
+		var lo: int = seg.decode_u32(pbase)
+		var hi: int = seg.decode_u32(pbase + 4)
+		if lo == 0 and hi == 0:
+			return default_value # null pointer -> default (no error)
+		if (lo & 0x3) != CapnPointer.Kind.LIST or (hi & 0x7) != CapnPointer.ElemSize.BYTE:
+			return _get_text_slow(ptr_index, default_value) # far / composite / non-byte
+		var off30: int = (lo >> 2) & 0x3FFFFFFF
+		if off30 >= 0x20000000:
+			off30 -= 0x40000000
+		var content_word: int = word_off + 1 + off30
+		var count: int = (hi >> 3) & 0x1FFFFFFF
+		var span_words: int = (count + 7) >> 3 # _list_body_words(BYTE, count)
+		if content_word < 0 or content_word + span_words > seg_words:
+			return _get_text_slow(ptr_index, default_value)
+		msg.traversal_words_used += span_words if span_words > 0 else 1
+		if msg.traversal_words_used > msg.limits.traversal_word_limit:
+			msg.fail("traversal limit exceeded")
+			return default_value
+		if count <= 0:
+			return ""
+		var cbyte: int = content_word * WORD_BYTES
+		var endb: int = cbyte + count
+		if seg[endb - 1] == 0:
+			endb -= 1 # drop the Text NUL terminator
+		return seg.slice(cbyte, endb).get_string_from_utf8()
+
+
+	# Layered fallback for the non-fast-path Text cases. Reached only before any
+	# traversal charge, so re-following here can't double-count.
+	func _get_text_slow(ptr_index: int, default_value: String) -> String:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
 		return msg.text_from_target(t)
 
 
-	func get_data(ptr_index: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
+	## Data twin of get_text — same inlined byte-list fast path, but returns the
+	## raw bytes (no NUL drop). Falls to _get_data_slow for the rest.
+	# Wire->enum boundary: bit-extracted codes compared against enum values (D10a).
+	@warning_ignore("int_as_enum_without_cast") func get_data(ptr_index: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
+		if ptr_index < 0 or ptr_index >= ptr_words:
+			return default_value
+		if depth_remaining <= 0:
+			return _get_data_slow(ptr_index, default_value)
+		var word_off: int = ptr_word + ptr_index
+		var seg: PackedByteArray = msg.segments.segments[seg_id]
+		var seg_words: int = seg.size() >> 3
+		if word_off >= seg_words:
+			return _get_data_slow(ptr_index, default_value)
+		var pbase: int = word_off * WORD_BYTES
+		var lo: int = seg.decode_u32(pbase)
+		var hi: int = seg.decode_u32(pbase + 4)
+		if lo == 0 and hi == 0:
+			return default_value
+		if (lo & 0x3) != CapnPointer.Kind.LIST or (hi & 0x7) != CapnPointer.ElemSize.BYTE:
+			return _get_data_slow(ptr_index, default_value)
+		var off30: int = (lo >> 2) & 0x3FFFFFFF
+		if off30 >= 0x20000000:
+			off30 -= 0x40000000
+		var content_word: int = word_off + 1 + off30
+		var count: int = (hi >> 3) & 0x1FFFFFFF
+		var span_words: int = (count + 7) >> 3
+		if content_word < 0 or content_word + span_words > seg_words:
+			return _get_data_slow(ptr_index, default_value)
+		msg.traversal_words_used += span_words if span_words > 0 else 1
+		if msg.traversal_words_used > msg.limits.traversal_word_limit:
+			msg.fail("traversal limit exceeded")
+			return default_value
+		if count <= 0:
+			return PackedByteArray()
+		var cbyte: int = content_word * WORD_BYTES
+		return seg.slice(cbyte, cbyte + count)
+
+
+	func _get_data_slow(ptr_index: int, default_value: PackedByteArray) -> PackedByteArray:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value
