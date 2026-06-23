@@ -51,6 +51,26 @@ func test_generated_reader_decodes_real_message() -> void:
 	assert_eq(bob_phones[1].get_type(), AddressbookCapnp.Person_PhoneNumber_Type.WORK, "bob phone 1 work")
 
 
+func test_generated_lazy_iter_matches_eager() -> void:
+	# The generated iter_*() lazy iterators must read the same values as the eager
+	# get_*() -> Array path, via reused element readers.
+	var bytes: PackedByteArray = _read_bytes("res://tests/fixtures/addressbook_msg.bin")
+	var ab: AddressbookCapnp.AddressBook.Reader = AddressbookCapnp.read_address_book(bytes)
+
+	var eager: Array[String] = []
+	for p: AddressbookCapnp.Person.Reader in ab.get_people():
+		for ph: AddressbookCapnp.Person_PhoneNumber.Reader in p.get_phones():
+			eager.append("%s/%d" % [ph.get_number(), ph.get_type()])
+
+	var lazy: Array[String] = []
+	for p: AddressbookCapnp.Person.Reader in ab.iter_people():
+		for ph: AddressbookCapnp.Person_PhoneNumber.Reader in p.iter_phones():
+			lazy.append("%s/%d" % [ph.get_number(), ph.get_type()])
+
+	assert_eq(lazy, eager, "lazy iter_*() matches eager get_*()")
+	assert_eq(lazy.size(), 3, "alice 1 + bob 2 phones")
+
+
 func test_generated_builder_roundtrips() -> void:
 	# Build an AddressBook with the generated Builder, serialize, read it back
 	# with the generated Reader.

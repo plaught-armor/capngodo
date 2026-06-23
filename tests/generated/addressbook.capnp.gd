@@ -34,6 +34,9 @@ class Person extends RefCounted:
 				out[i] = r
 			return out
 
+		func iter_phones() -> CapnReader.StructListIter:
+			return CapnReader.StructListIter.new(self.get_list(2), Person_PhoneNumber.Reader.new())
+
 		func employment_which() -> int:
 			return self.get_u16(4, 0)
 
@@ -147,6 +150,9 @@ class AddressBook extends RefCounted:
 				lr.fill_struct(i, r)
 				out[i] = r
 			return out
+
+		func iter_people() -> CapnReader.StructListIter:
+			return CapnReader.StructListIter.new(self.get_list(0), Person.Reader.new())
 
 	class Builder extends CapnBuilder.StructBuilder:
 		static func wrap(b: CapnBuilder.StructBuilder) -> Builder:

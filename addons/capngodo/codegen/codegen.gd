@@ -634,6 +634,18 @@ static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int,
 	else:
 		lines.append(TAB + TAB + TAB + TAB + "out[i] = %s" % _list_elem_expr(ew, elem, flat_by_id))
 	lines.append(TAB + TAB + TAB + "return out")
+	# Opt-in lazy iterator for List(struct): one reused element reader, no
+	# Array. The yielded reader is a transient view (read out, don't retain) —
+	# see CapnReader.StructListIter. Eager get_*() above stays for random access.
+	if not struct_flat.is_empty():
+		lines.append("")
+		lines.append(TAB + TAB + "func iter_%s() -> CapnReader.StructListIter:" % fname)
+		lines.append(
+			(
+					TAB + TAB + TAB
+					+ "return CapnReader.StructListIter.new(self.get_list(%d), %s.Reader.new())" % [off, struct_flat]
+			),
+		)
 
 
 ## Primitive element types whose wire layout (contiguous little-endian) maps 1:1
