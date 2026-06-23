@@ -1,5 +1,5 @@
-class_name CapnPointer extends RefCounted
-
+class_name CapnPointer
+extends RefCounted
 ## Cap'n Proto pointer-word codec (encoding.md :87-269).
 ##
 ## A pointer is exactly one 8-byte little-endian word. The low 2 bits are the
@@ -15,23 +15,23 @@ class_name CapnPointer extends RefCounted
 ## (D10/D10a): iota 0..3 matches the spec's A field exactly, like capnp's own
 ## C++ `enum class Kind`.
 enum Kind {
-	STRUCT,  ## 0 — struct pointer
-	LIST,    ## 1 — list pointer
-	FAR,     ## 2 — far pointer
-	OTHER,   ## 3 — "other"; subkind 0 == capability
+	STRUCT, ## 0 — struct pointer
+	LIST, ## 1 — list pointer
+	FAR, ## 2 — far pointer
+	OTHER, ## 3 — "other"; subkind 0 == capability
 }
 
 ## List element-size code = C field (encoding.md :172-180). Enum values ARE the
 ## wire codes: iota 0..7 matches capnp's `enum class ElementSize`.
 enum ElemSize {
-	VOID,         ## 0 — List(Void), zero width
-	BIT,          ## 1 — 1 bit
-	BYTE,         ## 2 — 1 byte
-	TWO_BYTES,    ## 3 — 2 bytes
-	FOUR_BYTES,   ## 4 — 4 bytes
-	EIGHT_BYTES,  ## 5 — 8 bytes, non-pointer
-	POINTER,      ## 6 — 8 bytes, pointer
-	COMPOSITE,    ## 7 — composite (tag word + elements)
+	VOID, ## 0 — List(Void), zero width
+	BIT, ## 1 — 1 bit
+	BYTE, ## 2 — 1 byte
+	TWO_BYTES, ## 3 — 2 bytes
+	FOUR_BYTES, ## 4 — 4 bytes
+	EIGHT_BYTES, ## 5 — 8 bytes, non-pointer
+	POINTER, ## 6 — 8 bytes, pointer
+	COMPOSITE, ## 7 — composite (tag word + elements)
 }
 
 const _MASK_30: int = 0x3FFFFFFF
@@ -55,7 +55,7 @@ var ptr_words: int = 0
 
 # list only.
 var elem_size_code: ElemSize = ElemSize.VOID
-var elem_count: int = 0  # element count (C<>7) or word count excl. tag (C=7)
+var elem_count: int = 0 # element count (C<>7) or word count excl. tag (C=7)
 
 # far only.
 var far_two_word: bool = false
@@ -66,8 +66,8 @@ var far_segment_id: int = 0
 var cap_index: int = 0
 var cap_is_valid: bool = false
 
-
 # --- decode --------------------------------------------------------------
+
 
 static func decode_at(buf: PackedByteArray, byte_off: int) -> CapnPointer:
 	# Boundary guard: a past-end decode_u32 silently returns 0 in Godot, which
@@ -104,14 +104,14 @@ static func decode(lo: int, hi: int) -> CapnPointer:
 		p.far_two_word = ((lo >> 2) & 0x1) != 0
 		p.offset = (lo >> 3) & _MASK_29
 		p.far_segment_id = hi
-	else:  # Kind.OTHER — capability iff subkind (bits 2-31 of lo) is zero
+	else: # Kind.OTHER — capability iff subkind (bits 2-31 of lo) is zero
 		var subkind: int = (lo >> 2) & _MASK_30
 		p.cap_is_valid = subkind == 0
 		p.cap_index = hi
 	return p
 
-
 # --- encode (each returns a fresh 8-byte word) ---------------------------
+
 
 static func encode_null() -> PackedByteArray:
 	var out: PackedByteArray = PackedByteArray()
@@ -147,8 +147,8 @@ static func encode_cap(index: int) -> PackedByteArray:
 	# A=3, B=0, C=index.
 	return _word(Kind.OTHER, index & 0xFFFFFFFF)
 
-
 # --- helpers -------------------------------------------------------------
+
 
 ## Composite-list tag word: struct-pointer-shaped, but the offset field carries
 ## the element count instead of a word offset (encoding.md :189-194).
@@ -165,7 +165,7 @@ static func elem_size_bytes(code: ElemSize) -> int:
 	if code == ElemSize.VOID:
 		return 0
 	elif code == ElemSize.BIT:
-		return 0  # sub-byte; caller handles bit packing
+		return 0 # sub-byte; caller handles bit packing
 	elif code == ElemSize.BYTE:
 		return 1
 	elif code == ElemSize.TWO_BYTES:
@@ -176,7 +176,7 @@ static func elem_size_bytes(code: ElemSize) -> int:
 		return 8
 	elif code == ElemSize.POINTER:
 		return 8
-	else:  # ElemSize.COMPOSITE
+	else: # ElemSize.COMPOSITE
 		return -1
 
 
