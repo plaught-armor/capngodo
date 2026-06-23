@@ -487,7 +487,13 @@ static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int,
 ## interface, void, or a cross-file struct not yet in flat_by_id). Checks
 ## _flat_of directly for structs rather than reading _return_type's sentinel.
 static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
-	if ew == CapnSchema.TypeWhich.ANY_POINTER or ew == CapnSchema.TypeWhich.LIST or ew == CapnSchema.TypeWhich.INTERFACE or ew == CapnSchema.TypeWhich.VOID:
+	if ew == CapnSchema.TypeWhich.LIST:
+		# List(List(T)): each element is a lazy inner list reader; the caller reads
+		# its elements with typed getters (or recurses for deeper nesting) (CG10).
+		return "Array[CapnReader.ListReader]"
+	if ew == CapnSchema.TypeWhich.INTERFACE:
+		return "Array[int]"  # capability cap-table indices (CG10)
+	if ew == CapnSchema.TypeWhich.ANY_POINTER or ew == CapnSchema.TypeWhich.VOID:
 		return "Array"
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _flat_of(elem, flat_by_id)
@@ -628,6 +634,13 @@ static func _emit_anyptr_setter(lines: PackedStringArray, suffix: String, off: i
 static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String], disc_line: String = "") -> void:
 	var ew: CapnSchema.TypeWhich = CapnSchema.type_which(elem)
 	lines.append("")
+	if ew == CapnSchema.TypeWhich.INTERFACE:
+		# Capability list: serialization-only, no RPC layer to write caps (CG6/CG10).
+		lines.append(TAB + TAB + "# init '%s' omitted: List(interface) is read-only (capability)" % fname)
+		return
+	if ew == CapnSchema.TypeWhich.ANY_POINTER:
+		lines.append(TAB + TAB + "# TODO(CG10b): init '%s' (List(AnyPointer) — deferred)" % fname)
+		return
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var child: String = _flat_of(elem, flat_by_id)
 		if child == "":
@@ -646,7 +659,10 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + TAB + "return out")
 		return
 	# Primitive / Text / Data list -> a raw ListBuilder; caller sets elements
-	# via lb.set_<kind>(i, value).
+	# via lb.set_<kind>(i, value). A List(List(T)) outer also lands here:
+	# _elem_size_token(LIST) is POINTER, so this allocates the outer pointer list
+	# and the caller fills each element via lb.init_list_at / init_composite_list_at
+	# (CG10).
 	lines.append(TAB + TAB + "func init_%s(n: int) -> CapnBuilder.ListBuilder:" % fname)
 	if disc_line != "":
 		lines.append(disc_line)
@@ -948,6 +964,10 @@ static func _scalar_expr(recv: String, tw: CapnSchema.TypeWhich, t: CapnReader.S
 static func _list_elem_expr(ew: CapnSchema.TypeWhich, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
 	if ew == CapnSchema.TypeWhich.VOID:
 		return "null"  # List(Void) carries only a length; elements have no value
+	if ew == CapnSchema.TypeWhich.LIST:
+		return "lr.get_list(i)"  # List(List(T)): lazy inner list reader (CG10)
+	if ew == CapnSchema.TypeWhich.INTERFACE:
+		return "lr.get_cap_index(i)"  # List(interface): cap-table index, -1 absent (CG10)
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _flat_of(elem, flat_by_id)
 		if flat == "":

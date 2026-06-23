@@ -346,6 +346,25 @@ class ListBuilder extends RefCounted:
 		arena.point_to_struct(seg_id, first_elem_word + i, child, dw, pw)
 		return StructBuilder.new(arena, child.x, child.y, dw, pw)
 
+	## Nested list: init a primitive/pointer list at element i (the outer list must
+	## be a pointer-element list), returns the inner list's builder. Mirror of
+	## StructBuilder.init_list but anchored at element word i (CG10 List(List(T))).
+	func init_list_at(i: int, code: CapnPointer.ElemSize, n: int) -> ListBuilder:
+		var body: int = CapnBuilder._list_body_words(code, n)
+		var loc: Vector2i = arena.allocate(body)
+		arena.point_to_list(seg_id, first_elem_word + i, loc, code, n)
+		return ListBuilder.make_primitive(arena, loc.x, loc.y, code, n)
+
+	## Nested composite (struct) list at element i. Mirror of
+	## StructBuilder.init_composite_list (CG10 List(List(struct))).
+	func init_composite_list_at(i: int, n: int, dw: int, pw: int) -> ListBuilder:
+		var step: int = dw + pw
+		var total: int = 1 + n * step
+		var loc: Vector2i = arena.allocate(total)
+		arena._put(loc.x, loc.y, CapnPointer.encode_composite_tag(n, dw, pw))
+		arena.point_to_list(seg_id, first_elem_word + i, loc, CapnPointer.ElemSize.COMPOSITE, n * step)
+		return ListBuilder.make_composite(arena, loc.x, loc.y + 1, n, dw, pw)
+
 	func set_text(i: int, s: String) -> void:
 		_write_bytes(i, CapnTextData.text_to_bytes(s))
 

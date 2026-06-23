@@ -470,6 +470,15 @@ class ListReader extends RefCounted:
 			return default_value
 		return ListReader.from_target(msg, t, depth_remaining - 1).to_data()
 
+	func get_cap_index(i: int) -> int:
+		# List(interface) element: capability pointer -> cap-table index, -1 when
+		# absent. Serialization-only; no RPC layer resolves it (CG10, mirrors the
+		# struct-level StructReader.get_cap_index).
+		var t: CapnTarget = _follow_elem(i)
+		if t.is_null or not t.is_cap:
+			return -1
+		return t.cap_index
+
 	func _follow_elem(i: int) -> CapnTarget:
 		if i < 0 or i >= count:
 			return CapnTarget.new()
