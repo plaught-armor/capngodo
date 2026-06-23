@@ -1135,11 +1135,19 @@ static func _param_override(f: CapnReader.StructReader, subst: Dictionary[int, C
 	return subst.get(CapnSchema.anyptr_param_index(t))
 
 
-## Walk every collected struct's fields; for each field whose type is a concrete
-## generic instantiation, register its signature -> mono name (in _mono_by_sig)
-## and queue a MonoInst. Dedup by signature so two fields of Box(Text) share one
-## Box_Text. Flat case only: direct struct-typed slots (group-nested / list-elem
-## generics are deferred — see docs/CG1B_PLAN.md).
+## Max generic-nesting depth the collector recurses (Box(Box(Box(…))) — bound the
+## recursion per NASA rule 2). Real schemas nest a handful deep at most.
+const _MAX_GENERIC_DEPTH: int = 16
+
+
+## Walk every collected struct's slot field; for each field whose type (or, for a
+## list field, element type) is a concrete generic instantiation, register it and
+## recurse into its brand bindings — Box(Box(Text)) registers Box_Text then
+## Box_Box_Text; a List(Box(Text)) field registers Box_Text (its getter then
+## resolves the element to Box_Text.Reader via _struct_flat). Dedup by signature
+## so two fields of Box(Text) share one Box_Text. Still deferred (see
+## docs/CG1B_PLAN.md): generic *parameter* slots nested inside a group of the
+## generic body, inherit scopes, generic enums/interfaces, cross-file monos.
 static func _collect_instantiations(types: Array[CodegenEntry], by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], used_names: Dictionary[String, bool]) -> Array[MonoInst]:
 	var insts: Array[MonoInst] = []
 	var seen: Dictionary[String, bool] = {}
@@ -1151,29 +1159,46 @@ static func _collect_instantiations(types: Array[CodegenEntry], by_id: Dictionar
 			var f: CapnReader.StructReader = fields.get_struct(i)
 			if CapnSchema.field_which(f) != CapnSchema.FieldWhich.SLOT:
 				continue
-			var t: CapnReader.StructReader = CapnSchema.field_slot_type(f)
-			if CapnSchema.type_which(t) != CapnSchema.TypeWhich.STRUCT:
-				continue
-			if not _is_concrete_generic(t):
-				continue
-			# Only monomorphize generics we actually emit. A generic defined in an
-			# unrequested file has no local class to extend the layout from, so its
-			# field stays unresolved (erased) rather than emitting a broken mono.
-			if not flat_by_id.has(CapnSchema.type_id(t)):
-				continue
-			var sig: String = _brand_signature(t)
-			if seen.has(sig):
-				continue
-			seen[sig] = true
-			var gen_id: int = CapnSchema.type_id(t)
-			var gen_node: CapnReader.StructReader = by_id.get(gen_id)
-			if gen_node == null:
-				continue
-			var mono_name: String = _uniquify(_mono_name(flat_by_id[gen_id], t, flat_by_id), used_names)
-			used_names[mono_name] = true
-			_mono_by_sig[sig] = mono_name
-			insts.append(MonoInst.new(gen_node, mono_name, _build_subst(t, gen_id), gen_id))
+			_register_inst(CapnSchema.field_slot_type(f), by_id, flat_by_id, insts, seen, used_names, 0)
 	return insts
+
+
+## Register the instantiation for type `t` if it is a concrete generic struct, and
+## recurse into its brand bindings (inner generics) + list elements. Inner monos
+## are registered before the outer so the dedup map is fully populated before
+## emit; emit order is forward-ref-safe regardless.
+static func _register_inst(t: CapnReader.StructReader, by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], insts: Array[MonoInst], seen: Dictionary[String, bool], used_names: Dictionary[String, bool], depth: int) -> void:
+	if depth >= _MAX_GENERIC_DEPTH:
+		push_error("[CapnCodegen] generic nesting exceeds %d — not monomorphizing deeper" % _MAX_GENERIC_DEPTH)
+		return
+	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
+	if tw == CapnSchema.TypeWhich.LIST:
+		_register_inst(CapnSchema.type_list_element(t), by_id, flat_by_id, insts, seen, used_names, depth + 1)
+		return
+	if tw != CapnSchema.TypeWhich.STRUCT:
+		return
+	if not _is_concrete_generic(t):
+		return
+	# Only monomorphize generics we actually emit. A generic defined in an
+	# unrequested file has no local class to extend the layout from, so its field
+	# stays unresolved (erased) rather than emitting a broken mono.
+	if not flat_by_id.has(CapnSchema.type_id(t)):
+		return
+	var sig: String = _brand_signature(t)
+	if seen.has(sig):
+		return
+	seen[sig] = true
+	var gen_id: int = CapnSchema.type_id(t)
+	var gen_node: CapnReader.StructReader = by_id.get(gen_id)
+	if gen_node == null:
+		return
+	var subst: Dictionary[int, CapnReader.StructReader] = _build_subst(t, gen_id)
+	for idx: int in subst:
+		_register_inst(subst[idx], by_id, flat_by_id, insts, seen, used_names, depth + 1)
+	var mono_name: String = _uniquify(_mono_name(flat_by_id[gen_id], t, flat_by_id), used_names)
+	used_names[mono_name] = true
+	_mono_by_sig[sig] = mono_name
+	insts.append(MonoInst.new(gen_node, mono_name, subst, gen_id))
 
 
 ## True when STRUCT type `t` carries a brand that binds at least one of its own
@@ -1272,7 +1297,18 @@ static func _mono_arg_name(b: CapnReader.StructReader, flat_by_id: Dictionary[in
 
 static func _arg_name_of_type(t: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> String:
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
-	if tw == CapnSchema.TypeWhich.STRUCT or tw == CapnSchema.TypeWhich.ENUM or tw == CapnSchema.TypeWhich.INTERFACE:
+	if tw == CapnSchema.TypeWhich.STRUCT:
+		var flat: String = flat_by_id.get(CapnSchema.type_id(t), "")
+		var base: String = _basename(flat) if flat != "" else "Struct"
+		# A generic arg that is itself an instantiation appends its own args, so
+		# Box(Box(Text)) -> Box_Box_Text (distinct from Box(Box(Int32))).
+		var scope: CapnReader.StructReader = _find_bind_scope(t)
+		if scope != null:
+			var binds: CapnReader.ListReader = CapnSchema.scope_bind(scope)
+			for i: int in binds.size():
+				base += "_" + _mono_arg_name(binds.get_struct(i), flat_by_id)
+		return base
+	if tw == CapnSchema.TypeWhich.ENUM or tw == CapnSchema.TypeWhich.INTERFACE:
 		var flat: String = flat_by_id.get(CapnSchema.type_id(t), "")
 		return _basename(flat) if flat != "" else _capnp_kind_name(tw)
 	if tw == CapnSchema.TypeWhich.LIST:
