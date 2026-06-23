@@ -529,6 +529,17 @@ static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, 
 
 static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> void:
 	var ew: CapnSchema.TypeWhich = CapnSchema.type_which(elem)
+	if ew == CapnSchema.TypeWhich.ANY_POINTER:
+		# List(AnyPointer): elements are erased — each may be a struct, list, text,
+		# data, or capability, so there's no single typed Array shape. Return the
+		# raw outer ListReader; the caller materializes element i with the matching
+		# per-element accessor — lr.get_struct_ptr(i) / get_list(i) / get_text(i) /
+		# get_data(i) / get_cap_index(i) (CG10b). capnp admits this only via
+		# List(AnyList) — a literal List(AnyPointer) is rejected by the compiler.
+		lines.append("")
+		lines.append(TAB + TAB + "func get_%s() -> CapnReader.ListReader:" % fname)
+		lines.append(TAB + TAB + TAB + "return _r.get_list(%d)" % off)
+		return
 	# Type the returned container by element kind for autocomplete at the call
 	# site. Indexed writes into a typed Array carry the element type directly —
 	# no C3 .assign() needed.
@@ -554,8 +565,8 @@ static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.Stru
 		return "Array[CapnReader.ListReader]"
 	if ew == CapnSchema.TypeWhich.INTERFACE:
 		return "Array[int]"  # capability cap-table indices (CG10)
-	if ew == CapnSchema.TypeWhich.ANY_POINTER or ew == CapnSchema.TypeWhich.VOID:
-		return "Array"
+	if ew == CapnSchema.TypeWhich.VOID:
+		return "Array"  # List(Void): length-only, elements are null (AnyPointer handled in _emit_list_getter, CG10b)
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var flat: String = _struct_flat(elem, flat_by_id)
 		return ("Array[%s.Reader]" % flat) if flat != "" else "Array"
@@ -702,7 +713,15 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 		lines.append(TAB + TAB + "# init '%s' omitted: List(interface) is read-only (capability)" % fname)
 		return
 	if ew == CapnSchema.TypeWhich.ANY_POINTER:
-		lines.append(TAB + TAB + "# TODO(CG10b): init '%s' (List(AnyPointer) — deferred)" % fname)
+		# List(AnyPointer): erased pointer elements. Allocate the outer pointer
+		# list and hand back its raw ListBuilder; the caller fills each element via
+		# the per-element entry points — init_struct_ptr(i, dw, pw) / init_list_at(
+		# i, code, n) / init_composite_list_at(i, n, dw, pw) / set_text(i, s) /
+		# set_data(i, bytes) (CG10b). Mirrors the getter's raw-ListReader return.
+		lines.append(TAB + TAB + "func init_%s(n: int) -> CapnBuilder.ListBuilder:" % fname)
+		if disc_line != "":
+			lines.append(disc_line)
+		lines.append(TAB + TAB + TAB + "return _b.init_list(%d, CapnPointer.ElemSize.POINTER, n)" % off)
 		return
 	if ew == CapnSchema.TypeWhich.STRUCT:
 		var child: String = _flat_of(elem, flat_by_id)
