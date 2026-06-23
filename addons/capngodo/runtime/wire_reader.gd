@@ -517,29 +517,42 @@ class StructReader extends RefCounted:
 		out.set_from_target(msg, t, depth_remaining - 1)
 
 
-	## Inlined list read, twin of the get_text fast path: decode the list pointer,
-	## bounds-check + charge, and populate one ListReader (composite tag decoded
-	## inline) in a single frame. List(struct) is the hottest non-text getter.
-	## Far / non-list / depth / limit fall to _get_list_slow before any charge.
-	## Semantics match ListReader.from_target — see test_wire_inline_list.gd.
+	func get_list(ptr_index: int) -> ListReader:
+		var r: ListReader = ListReader.new()
+		fill_list(ptr_index, r)
+		return r
+
+
+	## Populate a caller-owned ListReader from the list pointer at `ptr_index`,
+	## instead of allocating — the lazy-iteration path reuses one ListReader across
+	## a whole loop. Inlines the list-pointer decode + bounds + traversal charge +
+	## composite-tag decode (the get_text fast-path twin); far / non-list / depth /
+	## limit fall to _fill_list_slow before any charge, so the slow re-follow never
+	## double-counts. `out` is reset to empty first, so any non-list result leaves a
+	## zero-length reader. Semantics match ListReader.from_target — see
+	## test_wire_inline_list.gd / test_lazy_reader.gd.
 	# Wire->enum boundary: bit-extracted codes assigned to enum fields (D10a).
-	@warning_ignore("int_as_enum_without_cast") func get_list(ptr_index: int) -> ListReader:
+	@warning_ignore("int_as_enum_without_cast") func fill_list(ptr_index: int, out: ListReader) -> void:
+		out.reset_empty(msg)
 		if ptr_index < 0 or ptr_index >= ptr_words:
-			return ListReader.empty(msg)
+			return
 		if depth_remaining <= 0:
-			return _get_list_slow(ptr_index)
+			_fill_list_slow(ptr_index, out)
+			return
 		var word_off: int = ptr_word + ptr_index
 		var seg: PackedByteArray = msg.segments.segments[seg_id]
 		var seg_words: int = seg.size() >> 3
 		if word_off >= seg_words:
-			return _get_list_slow(ptr_index)
+			_fill_list_slow(ptr_index, out)
+			return
 		var pbase: int = word_off * WORD_BYTES
 		var lo: int = seg.decode_u32(pbase)
 		var hi: int = seg.decode_u32(pbase + 4)
 		if lo == 0 and hi == 0:
-			return ListReader.empty(msg) # null pointer -> empty list
+			return # null pointer -> empty list (out already reset)
 		if (lo & 0x3) != CapnPointer.Kind.LIST:
-			return _get_list_slow(ptr_index) # far / struct / cap (far handled in slow)
+			_fill_list_slow(ptr_index, out) # far / struct / cap (far handled in slow)
+			return
 		var off30: int = (lo >> 2) & 0x3FFFFFFF
 		if off30 >= 0x20000000:
 			off30 -= 0x40000000
@@ -557,16 +570,16 @@ class StructReader extends RefCounted:
 		else:
 			span = (ecount * CapnPointer.elem_size_bytes(ecode) + 7) >> 3
 		if content_word < 0 or content_word + span > seg_words:
-			return _get_list_slow(ptr_index)
+			_fill_list_slow(ptr_index, out)
+			return
 		msg.traversal_words_used += span if span > 0 else 1
 		if msg.traversal_words_used > msg.limits.traversal_word_limit:
 			msg.fail("traversal limit exceeded")
-			return ListReader.empty(msg)
-		var r: ListReader = ListReader.new()
-		r.msg = msg
-		r.seg_id = seg_id
-		r.depth_remaining = depth_remaining - 1
-		r.elem_size_code = ecode
+			return # out stays empty
+		out.msg = msg
+		out.seg_id = seg_id
+		out.depth_remaining = depth_remaining - 1
+		out.elem_size_code = ecode
 		if ecode == CapnPointer.ElemSize.COMPOSITE:
 			# Composite tag is struct-pointer-shaped; its offset field carries the count.
 			var tbase: int = content_word * WORD_BYTES
@@ -575,24 +588,23 @@ class StructReader extends RefCounted:
 			var cnt: int = (tag_lo >> 2) & 0x3FFFFFFF
 			if cnt >= 0x20000000:
 				cnt -= 0x40000000
-			r.is_composite = true
-			r.count = cnt
-			r.comp_data_words = tag_hi & 0xffff
-			r.comp_ptr_words = (tag_hi >> 16) & 0xffff
-			r.step_words = r.comp_data_words + r.comp_ptr_words
-			r.first_elem_word = content_word + 1
+			out.is_composite = true
+			out.count = cnt
+			out.comp_data_words = tag_hi & 0xffff
+			out.comp_ptr_words = (tag_hi >> 16) & 0xffff
+			out.step_words = out.comp_data_words + out.comp_ptr_words
+			out.first_elem_word = content_word + 1
 		else:
-			r.count = ecount
-			r.first_elem_word = content_word
-			r.step_bytes = CapnPointer.elem_size_bytes(ecode)
-		return r
+			out.count = ecount
+			out.first_elem_word = content_word
+			out.step_bytes = CapnPointer.elem_size_bytes(ecode)
 
 
-	func _get_list_slow(ptr_index: int) -> ListReader:
+	func _fill_list_slow(ptr_index: int, out: ListReader) -> void:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
-			return ListReader.empty(msg)
-		return ListReader.from_target(msg, t, depth_remaining - 1)
+			return # out already reset to empty
+		out.populate_from_target(msg, t, depth_remaining - 1)
 
 
 	## Fully-inlined Text read for the common case: an in-segment, in-bounds
@@ -742,26 +754,50 @@ class ListReader extends RefCounted:
 
 	static func from_target(msg: Message, t: CapnTarget, depth_remaining: int) -> ListReader:
 		var r: ListReader = ListReader.new()
-		r.msg = msg
-		r.seg_id = t.seg_id
-		r.elem_size_code = t.elem_size_code
-		r.depth_remaining = depth_remaining
+		r.populate_from_target(msg, t, depth_remaining)
+		return r
+
+
+	## Populate self (an existing ListReader) from a resolved target — the
+	## instance body behind from_target, also used by StructReader.fill_list's slow
+	## path so a caller-owned ListReader can be reused without a fresh alloc.
+	func populate_from_target(p_msg: Message, t: CapnTarget, p_depth: int) -> void:
+		reset_empty(p_msg)
+		seg_id = t.seg_id
+		elem_size_code = t.elem_size_code
+		depth_remaining = p_depth
 		if t.elem_size_code == CapnPointer.ElemSize.COMPOSITE:
 			# content_word points at the tag word; tag.offset carries the count.
 			# follow() has already drained its decode into `t`, so its scratch pointer
 			# is free to reuse for the tag word here.
-			var tag: CapnPointer = msg.decode_ptr(t.seg_id, t.content_word)
-			r.is_composite = true
-			r.count = tag.offset
-			r.comp_data_words = tag.data_words
-			r.comp_ptr_words = tag.ptr_words
-			r.step_words = tag.data_words + tag.ptr_words
-			r.first_elem_word = t.content_word + 1
+			var tag: CapnPointer = p_msg.decode_ptr(t.seg_id, t.content_word)
+			is_composite = true
+			count = tag.offset
+			comp_data_words = tag.data_words
+			comp_ptr_words = tag.ptr_words
+			step_words = tag.data_words + tag.ptr_words
+			first_elem_word = t.content_word + 1
 		else:
-			r.count = t.elem_count
-			r.first_elem_word = t.content_word
-			r.step_bytes = CapnPointer.elem_size_bytes(t.elem_size_code)
-		return r
+			count = t.elem_count
+			first_elem_word = t.content_word
+			step_bytes = CapnPointer.elem_size_bytes(t.elem_size_code)
+
+
+	## Reset to a zero-length list bound to `p_msg`. Clears every field a reused
+	## reader might carry from a prior fill, so size()==0 and no stale composite
+	## stride leaks through. Used by fill_list on the null/out-of-bounds paths.
+	func reset_empty(p_msg: Message) -> void:
+		msg = p_msg
+		seg_id = 0
+		elem_size_code = CapnPointer.ElemSize.VOID
+		count = 0
+		first_elem_word = 0
+		is_composite = false
+		step_bytes = 0
+		step_words = 0
+		comp_data_words = 0
+		comp_ptr_words = 0
+		depth_remaining = 0
 
 
 	static func empty(msg: Message) -> ListReader:
@@ -958,3 +994,50 @@ class ListReader extends RefCounted:
 
 	func _buf() -> PackedByteArray:
 		return msg.segments.segments[seg_id]
+
+# =========================================================================
+# StructListIter — lazy iterator over a List(struct). Yields ONE reused typed
+# Reader, repositioned each step via ListReader.fill_struct, so a `for e in it:`
+# loop allocates a single element reader instead of N. The yielded reader is a
+# VIEW valid only for the current step: read its fields out, never retain it
+# (stash, append, or hold two elements). For random access / retention use the
+# eager get_*() -> Array[Reader] form. The iterator shape forbids `[i]` and
+# binding two cursors, so those footguns can't be written; only collecting the
+# reader mid-loop can misuse it. See test_lazy_reader.gd.
+# =========================================================================
+
+
+class StructListIter extends RefCounted:
+	var _list: ListReader = null
+	var _elem: StructReader = null
+	var _n: int = 0
+
+
+	func _init(p_list: ListReader, p_elem: StructReader) -> void:
+		_list = p_list
+		_elem = p_elem
+		_n = p_list.size()
+
+
+	func _iter_init(it: Array) -> bool:
+		it[0] = 0
+		if _n > 0:
+			_list.fill_struct(0, _elem)
+		return _n > 0
+
+
+	func _iter_next(it: Array) -> bool:
+		it[0] += 1
+		var i: int = it[0]
+		if i >= _n:
+			return false
+		_list.fill_struct(i, _elem)
+		return true
+
+
+	func _iter_get(_it: Variant) -> StructReader:
+		return _elem
+
+
+	func size() -> int:
+		return _n
