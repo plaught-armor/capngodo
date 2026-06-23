@@ -40,14 +40,17 @@ result on the tested paths — these are gaps, edges, and polish.
 ## Runtime perf (measure-first — DOD inline checklist)
 
 Measured 2026-06-23 with `tools/bench.gd` (AddressBook ×1000 people = 156 KiB,
-80 iters, Godot 4.8.dev). Baseline throughput: build ~8.2 MB/s, decode ~4.3 MB/s
-(slowest), pack ~18 MB/s, unpack ~15 MB/s. **Both micro-opts measured as
-regressions — refuted, do not reland without new evidence.**
+Godot 4.8.dev). Baseline throughput: build ~8.2 MB/s, decode ~4.3 MB/s
+(slowest), pack ~18 MB/s, unpack ~15 MB/s. RT1/RT2 measured as regressions —
+refuted, do not reland without new evidence. **RT4 measured as a confirmed ~10%
+decode win and landed** — the per-dereference allocation, not the 3-hop or the
+packed byte loop, is the decode bottleneck RT2 was looking for.
 
 | id | pri | item | notes |
 |---|---|---|---|
 | RT1 | 🚫 | **Packed codec hot-loop allocs** | Refuted. Pre-sized output + index-cursor writes (`out[c] = b`) ran *slower* (pack 8.75 → 9.45 ms): GDScript `PackedByteArray[i] = b` is a per-element Variant set; the batched C++ `append_array` of a per-word `content` array beats it. The per-word alloc is not the bottleneck — manual byte loops are. Left as-is. |
 | RT2 | 🚫 | **Reader `_buf()` 3-hop** | Refuted. Lazy-caching `msg.segments.segments[seg_id]` in the reader (bool guard + cached `PackedByteArray`) added a per-call branch for no win (decode 36.9 → 38.6 ms). The 3-hop is cheap (CoW ref share + fast property access); decode cost is allocation-bound (String materialization in `to_text`, `Array[Reader]` in list getters), not pointer-chase. Left as-is. |
+| RT4 | ✅ | **`CapnTarget` pooled per Message** | Landed. `Message.follow()` and its callees allocated a fresh `CapnTarget` (RefCounted) on every pointer dereference — ~5 per person on the AddressBook payload, ~250k allocs across the decode bench. The target is a pure transient: `StructReader`/`ListReader.from_target` copy its fields out immediately and never retain it, and reads are single-threaded with no `await` between follows. So one reused `_scratch: CapnTarget` per `Message` (reset via `_null_target()` on the null/OOB/limit paths) is safe and drops the alloc. Correctness gotcha handled: `_target_from_pointer` clears the sticky `is_cap` flag at entry, since the struct/list arms never reset it and a prior capability target would otherwise leak `is_cap=true` into a reused struct/list target. Measured A/B/A interleaved (120 iters, min-of-3): decode **37.22 → 33.40 ms (~10% faster, 4.3 → 4.8 MB/s)**, repeatable across the sandwich; build/pack/unpack untouched (builder doesn't use `CapnTarget`). All 129 GUT tests pass. |
 | RT3 | P3 | **`read_u64` naming** | `CapnWireWords.read_u64` returns a possibly-negative bit pattern; consider `read_u64_bits` to surface that. No callers today. |
 
 ## Packaging (the rest of M7)
