@@ -336,7 +336,7 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 			# instead of the erased AnyPointer accessors.
 			_emit_slot_getter(lines, _safe_member(_snake(CapnSchema.field_name(gf))), gf, flat_by_id, ov)
 		else:
-			_emit_field_getter(lines, gf, flat_by_id, by_id, struct_disc)
+			_emit_field_getter(lines, gf, flat_by_id, by_id, struct_disc, subst, subst_scope)
 	lines.append("")
 
 	# Builder.
@@ -357,7 +357,7 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 			# Generic parameter slot (CG1b): typed setter from the bound type.
 			_emit_slot_setter(lines, _safe_member(_snake(CapnSchema.field_name(sf))), sf, flat_by_id, -1, 0, -1, 0, ov)
 		else:
-			_emit_field_setter(lines, sf, flat_by_id, by_id, struct_disc)
+			_emit_field_setter(lines, sf, flat_by_id, by_id, struct_disc, subst, subst_scope)
 	lines.append("")
 
 
@@ -407,7 +407,12 @@ static func _emit_union_enum(lines: PackedStringArray, name_snake: String, gnode
 	lines.append(TAB + "enum %s { %s }" % [_safe_type(_pascal(name_snake)), ", ".join(ordered)])
 
 
-static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], struct_disc: int) -> void:
+## subst/subst_scope (CG1d): when this struct is a generic mono, a param slot
+## nested inside one of its groups resolves to the bound type — threaded down to
+## every group leaf so group-nested params emit typed, not erased. (Top-level
+## param slots never reach here: _emit_struct applies _param_override and emits
+## them directly; this fn handles only the non-param fields it recurses into.)
+static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], struct_disc: int, subst: Dictionary[int, CapnReader.StructReader] = {}, subst_scope: int = 0) -> void:
 	var fname: String = _safe_member(_snake(CapnSchema.field_name(f)))
 	# Any struct-level union arm — slot, named group, or union group — gets an
 	# outer is_<name>() selector first.
@@ -416,7 +421,7 @@ static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructRea
 	if gnode != null:
 		if is_struct_arm:
 			_emit_is_arm(lines, fname, struct_disc, CapnSchema.field_discriminant_value(f))
-		_emit_union_getters(lines, fname, gnode, flat_by_id)
+		_emit_union_getters(lines, fname, gnode, flat_by_id, subst, subst_scope)
 		return
 	if CapnSchema.field_which(f) == CapnSchema.FieldWhich.GROUP:
 		var named: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(f))
@@ -426,7 +431,7 @@ static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructRea
 			return
 		if is_struct_arm:
 			_emit_is_arm(lines, fname, struct_disc, CapnSchema.field_discriminant_value(f))
-		_emit_named_group_getters(lines, fname, named, flat_by_id, by_id)
+		_emit_named_group_getters(lines, fname, named, flat_by_id, by_id, subst, subst_scope)
 		return
 	if is_struct_arm:
 		_emit_is_arm(lines, fname, struct_disc, CapnSchema.field_discriminant_value(f))
@@ -488,7 +493,9 @@ static func _emit_anyptr_getter(lines: PackedStringArray, suffix: String, off: i
 
 
 ## Union (group) reader: <group>_which() + per-member is_/get_ accessors.
-static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> void:
+## subst/subst_scope (CG1d): a union arm that is a generic param slot resolves to
+## the bound type.
+static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], subst: Dictionary[int, CapnReader.StructReader] = {}, subst_scope: int = 0) -> void:
 	var disc: int = _disc_byte(gnode)
 	lines.append("")
 	lines.append(TAB + TAB + "func %s_which() -> int:" % gsnake)
@@ -501,30 +508,30 @@ static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode:
 		lines.append(TAB + TAB + "func is_%s_%s() -> bool:" % [gsnake, mname])
 		lines.append(TAB + TAB + TAB + "return _r.get_u16(%d, 0) == %d" % [disc, CapnSchema.field_discriminant_value(m)])
 		if CapnSchema.field_which(m) == CapnSchema.FieldWhich.SLOT:
-			_emit_slot_getter(lines, "%s_%s" % [gsnake, mname], m, flat_by_id)
+			_emit_slot_getter(lines, "%s_%s" % [gsnake, mname], m, flat_by_id, _param_override(m, subst, subst_scope))
 
 
 ## Named (non-discriminated) group reader: a group is a sub-namespace whose
 ## fields share the parent's data/pointer layout, so flatten them into
 ## get_<group>_<field>() accessors. Recurses for nested named groups and
 ## delegates to _emit_union_getters for a union nested inside the group.
-static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader]) -> void:
+static func _emit_named_group_getters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], subst: Dictionary[int, CapnReader.StructReader] = {}, subst_scope: int = 0) -> void:
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
 		var m: CapnReader.StructReader = members.get_struct(i)
 		var full: String = "%s_%s" % [prefix, _safe_member(_snake(CapnSchema.field_name(m)))]
 		var un: CapnReader.StructReader = _union_node(m, by_id)
 		if un != null:
-			_emit_union_getters(lines, full, un, flat_by_id)
+			_emit_union_getters(lines, full, un, flat_by_id, subst, subst_scope)
 		elif CapnSchema.field_which(m) == CapnSchema.FieldWhich.GROUP:
 			var sub: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(m))
 			if sub == null:
 				lines.append("")
 				lines.append(TAB + TAB + "# TODO: nested group '%s' (unresolved cross-file type)" % full)
 				continue
-			_emit_named_group_getters(lines, full, sub, flat_by_id, by_id)
+			_emit_named_group_getters(lines, full, sub, flat_by_id, by_id, subst, subst_scope)
 		else:
-			_emit_slot_getter(lines, full, m, flat_by_id)
+			_emit_slot_getter(lines, full, m, flat_by_id, _param_override(m, subst, subst_scope))
 
 
 static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int, elem: CapnReader.StructReader, flat_by_id: Dictionary[int, String]) -> void:
@@ -575,7 +582,9 @@ static func _list_container_type(ew: CapnSchema.TypeWhich, elem: CapnReader.Stru
 
 # --- setters (Builder) ---------------------------------------------------
 
-static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], struct_disc: int) -> void:
+## subst/subst_scope (CG1d): mirror of _emit_field_getter — a param slot nested
+## in one of a generic mono's groups resolves to its bound type.
+static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], struct_disc: int, subst: Dictionary[int, CapnReader.StructReader] = {}, subst_scope: int = 0) -> void:
 	var fname: String = _safe_member(_snake(CapnSchema.field_name(f)))
 	var gnode: CapnReader.StructReader = _union_node(f, by_id)
 	if gnode != null:
@@ -584,9 +593,9 @@ static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructRea
 		# this group on the outer union. Otherwise the inner setters alone leave
 		# the outer which() at its zero default.
 		if struct_disc >= 0 and CapnSchema.field_in_union(f):
-			_emit_union_setters(lines, fname, gnode, flat_by_id, struct_disc, CapnSchema.field_discriminant_value(f))
+			_emit_union_setters(lines, fname, gnode, flat_by_id, struct_disc, CapnSchema.field_discriminant_value(f), subst, subst_scope)
 		else:
-			_emit_union_setters(lines, fname, gnode, flat_by_id)
+			_emit_union_setters(lines, fname, gnode, flat_by_id, -1, 0, subst, subst_scope)
 		return
 	if CapnSchema.field_which(f) == CapnSchema.FieldWhich.GROUP:
 		var named: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(f))
@@ -598,9 +607,9 @@ static func _emit_field_setter(lines: PackedStringArray, f: CapnReader.StructRea
 		# OUTER discriminant into every flattened leaf setter so selecting any
 		# leaf also selects this group on the outer union.
 		if struct_disc >= 0 and CapnSchema.field_in_union(f):
-			_emit_named_group_setters(lines, fname, named, flat_by_id, by_id, struct_disc, CapnSchema.field_discriminant_value(f))
+			_emit_named_group_setters(lines, fname, named, flat_by_id, by_id, struct_disc, CapnSchema.field_discriminant_value(f), subst, subst_scope)
 		else:
-			_emit_named_group_setters(lines, fname, named, flat_by_id, by_id)
+			_emit_named_group_setters(lines, fname, named, flat_by_id, by_id, -1, 0, subst, subst_scope)
 		return
 	# A struct-level union member's setter also writes the discriminant.
 	if struct_disc >= 0 and CapnSchema.field_in_union(f):
@@ -755,7 +764,7 @@ static func _emit_list_setter(lines: PackedStringArray, fname: String, off: int,
 ## When the group is itself a struct-level union arm, outer_disc_off/val are
 ## threaded to each member setter so it also selects this group on the outer
 ## union (CG4).
-static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
+static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], outer_disc_off: int = -1, outer_disc_val: int = 0, subst: Dictionary[int, CapnReader.StructReader] = {}, subst_scope: int = 0) -> void:
 	var disc: int = _disc_byte(gnode)
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
@@ -764,7 +773,7 @@ static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode:
 			lines.append("")
 			lines.append(TAB + TAB + "# TODO(M6): nested group union member '%s'" % _snake(CapnSchema.field_name(m)))
 			continue
-		_emit_slot_setter(lines, "%s_%s" % [gsnake, _safe_member(_snake(CapnSchema.field_name(m)))], m, flat_by_id, disc, CapnSchema.field_discriminant_value(m), outer_disc_off, outer_disc_val)
+		_emit_slot_setter(lines, "%s_%s" % [gsnake, _safe_member(_snake(CapnSchema.field_name(m)))], m, flat_by_id, disc, CapnSchema.field_discriminant_value(m), outer_disc_off, outer_disc_val, _param_override(m, subst, subst_scope))
 
 
 ## Named (non-discriminated) group builder: mirror of _emit_named_group_getters.
@@ -772,23 +781,23 @@ static func _emit_union_setters(lines: PackedStringArray, gsnake: String, gnode:
 ## named groups; delegates to _emit_union_setters for a union nested in the group.
 ## When the group is itself a struct-level union arm, outer_disc_off/val thread
 ## down to every leaf setter so selecting any leaf selects this arm (CG4).
-static func _emit_named_group_setters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], outer_disc_off: int = -1, outer_disc_val: int = 0) -> void:
+static func _emit_named_group_setters(lines: PackedStringArray, prefix: String, gnode: CapnReader.StructReader, flat_by_id: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader], outer_disc_off: int = -1, outer_disc_val: int = 0, subst: Dictionary[int, CapnReader.StructReader] = {}, subst_scope: int = 0) -> void:
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
 		var m: CapnReader.StructReader = members.get_struct(i)
 		var full: String = "%s_%s" % [prefix, _safe_member(_snake(CapnSchema.field_name(m)))]
 		var un: CapnReader.StructReader = _union_node(m, by_id)
 		if un != null:
-			_emit_union_setters(lines, full, un, flat_by_id, outer_disc_off, outer_disc_val)
+			_emit_union_setters(lines, full, un, flat_by_id, outer_disc_off, outer_disc_val, subst, subst_scope)
 		elif CapnSchema.field_which(m) == CapnSchema.FieldWhich.GROUP:
 			var sub: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(m))
 			if sub == null:
 				lines.append("")
 				lines.append(TAB + TAB + "# TODO: nested group '%s' (unresolved cross-file type)" % full)
 				continue
-			_emit_named_group_setters(lines, full, sub, flat_by_id, by_id, outer_disc_off, outer_disc_val)
+			_emit_named_group_setters(lines, full, sub, flat_by_id, by_id, outer_disc_off, outer_disc_val, subst, subst_scope)
 		else:
-			_emit_slot_setter(lines, full, m, flat_by_id, -1, 0, outer_disc_off, outer_disc_val)
+			_emit_slot_setter(lines, full, m, flat_by_id, -1, 0, outer_disc_off, outer_disc_val, _param_override(m, subst, subst_scope))
 
 
 static func _disc_byte(gnode: CapnReader.StructReader) -> int:
@@ -1139,6 +1148,9 @@ static func _struct_flat(t: CapnReader.StructReader, flat_by_id: Dictionary[int,
 ## currently being monomorphized, else null. A param slot is an AnyPointer whose
 ## anyPointer.which == PARAMETER and whose scopeId matches subst_scope; the bound
 ## type is subst[parameterIndex] (null when that parameter is left unbound).
+## subst is READ-ONLY here and in every emitter that threads it — never mutated —
+## so the `subst = {}` shared-default-literal in those signatures (engine bug C2)
+## is safe; subst_scope == 0 (the non-generic default) also short-circuits below.
 static func _param_override(f: CapnReader.StructReader, subst: Dictionary[int, CapnReader.StructReader], subst_scope: int) -> CapnReader.StructReader:
 	if subst_scope == 0:
 		return null
@@ -1164,22 +1176,35 @@ const _MAX_GENERIC_DEPTH: int = 16
 ## recurse into its brand bindings — Box(Box(Text)) registers Box_Text then
 ## Box_Box_Text; a List(Box(Text)) field registers Box_Text (its getter then
 ## resolves the element to Box_Text.Reader via _struct_flat). Dedup by signature
-## so two fields of Box(Text) share one Box_Text. Still deferred (see
-## docs/CG1B_PLAN.md): generic *parameter* slots nested inside a group of the
-## generic body, inherit scopes, generic enums/interfaces, cross-file monos.
+## so two fields of Box(Text) share one Box_Text. Group fields are walked
+## recursively (CG1d), so a Box(Text)-typed slot nested inside a named/union group
+## registers its mono too — the leaf getter would otherwise resolve to the erased
+## floor. Still deferred (see docs/CG1B_PLAN.md): inherit scopes (Outer(T).Inner),
+## generic enums/interfaces, cross-file mono dedup.
 static func _collect_instantiations(types: Array[CodegenEntry], by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], used_names: Dictionary[String, bool]) -> Array[MonoInst]:
 	var insts: Array[MonoInst] = []
 	var seen: Dictionary[String, bool] = {}
 	for entry: CodegenEntry in types:
 		if CapnSchema.node_which(entry.node) != CapnSchema.NodeWhich.STRUCT:
 			continue
-		var fields: CapnReader.ListReader = CapnSchema.node_struct_fields(entry.node)
-		for i: int in fields.size():
-			var f: CapnReader.StructReader = fields.get_struct(i)
-			if CapnSchema.field_which(f) != CapnSchema.FieldWhich.SLOT:
-				continue
-			_register_inst(CapnSchema.field_slot_type(f), by_id, flat_by_id, insts, seen, used_names, 0)
+		_collect_field_insts(CapnSchema.node_struct_fields(entry.node), by_id, flat_by_id, insts, seen, used_names, 0)
 	return insts
+
+
+## Walk a field list, registering the instantiation behind every slot's type and
+## recursing into group fields (CG1d). `depth` bounds the group recursion (NASA
+## rule 2); group nesting is finite + acyclic, the cap is a backstop.
+static func _collect_field_insts(fields: CapnReader.ListReader, by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], insts: Array[MonoInst], seen: Dictionary[String, bool], used_names: Dictionary[String, bool], depth: int) -> void:
+	if depth >= _MAX_GENERIC_DEPTH:
+		return
+	for i: int in fields.size():
+		var f: CapnReader.StructReader = fields.get_struct(i)
+		if CapnSchema.field_which(f) == CapnSchema.FieldWhich.SLOT:
+			_register_inst(CapnSchema.field_slot_type(f), by_id, flat_by_id, insts, seen, used_names, 0)
+		elif CapnSchema.field_which(f) == CapnSchema.FieldWhich.GROUP:
+			var g: CapnReader.StructReader = by_id.get(CapnSchema.field_group_type_id(f))
+			if g != null:
+				_collect_field_insts(CapnSchema.node_struct_fields(g), by_id, flat_by_id, insts, seen, used_names, depth + 1)
 
 
 ## Register the instantiation for type `t` if it is a concrete generic struct, and
