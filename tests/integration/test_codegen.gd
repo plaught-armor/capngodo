@@ -71,6 +71,52 @@ func test_generated_lazy_iter_matches_eager() -> void:
 	assert_eq(lazy.size(), 3, "alice 1 + bob 2 phones")
 
 
+func test_generated_build_iter_matches_eager() -> void:
+	# Building via the lazy init_*_iter (reused builders) must produce byte-identical
+	# output to the eager init_*() -> Array path.
+	var eager: PackedByteArray = _build_addressbook_eager()
+	var lazy: PackedByteArray = _build_addressbook_lazy()
+	assert_eq(lazy, eager, "init_*_iter build == init_*() build, byte for byte")
+	# And it reads back correctly.
+	var ab: AddressbookCapnp.AddressBook.Reader = AddressbookCapnp.read_address_book(lazy)
+	var people: Array = ab.get_people()
+	assert_eq(people.size(), 2)
+	assert_eq(people[1].get_name(), "Bob")
+	assert_eq(people[0].get_phones()[0].get_number(), "555-0001")
+
+
+func _build_addressbook_eager() -> PackedByteArray:
+	var ab: AddressbookCapnp.AddressBook.Builder = AddressbookCapnp.new_address_book()
+	var pp: Array = ab.init_people(2)
+	pp[0].set_id(1)
+	pp[0].set_name("Alice")
+	var a_ph: Array = pp[0].init_phones(1)
+	a_ph[0].set_number("555-0001")
+	a_ph[0].set_type(AddressbookCapnp.Person_PhoneNumber_Type.MOBILE)
+	pp[1].set_id(2)
+	pp[1].set_name("Bob")
+	pp[1].init_phones(0)
+	return ab.to_bytes()
+
+
+func _build_addressbook_lazy() -> PackedByteArray:
+	var ab: AddressbookCapnp.AddressBook.Builder = AddressbookCapnp.new_address_book()
+	var i: int = 0
+	for p: AddressbookCapnp.Person.Builder in ab.init_people_iter(2):
+		if i == 0:
+			p.set_id(1)
+			p.set_name("Alice")
+			for ph: AddressbookCapnp.Person_PhoneNumber.Builder in p.init_phones_iter(1):
+				ph.set_number("555-0001")
+				ph.set_type(AddressbookCapnp.Person_PhoneNumber_Type.MOBILE)
+		else:
+			p.set_id(2)
+			p.set_name("Bob")
+			var _empty: CapnBuilder.StructListBuilderIter = p.init_phones_iter(0)
+		i += 1
+	return ab.to_bytes()
+
+
 func test_generated_builder_roundtrips() -> void:
 	# Build an AddressBook with the generated Builder, serialize, read it back
 	# with the generated Reader.

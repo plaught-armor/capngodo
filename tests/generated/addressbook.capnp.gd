@@ -86,6 +86,9 @@ class Person extends RefCounted:
 				out[i] = e
 			return out
 
+		func init_phones_iter(n: int) -> CapnBuilder.StructListBuilderIter:
+			return CapnBuilder.StructListBuilderIter.new(self.init_composite_list(2, n, Person_PhoneNumber.DATA_WORDS, Person_PhoneNumber.PTR_WORDS), Person_PhoneNumber.Builder.new())
+
 		func set_employment_unemployed() -> void:
 			self.set_u16(4, 0, 0)
 
@@ -172,6 +175,9 @@ class AddressBook extends RefCounted:
 				lb.fill_struct(i, e)
 				out[i] = e
 			return out
+
+		func init_people_iter(n: int) -> CapnBuilder.StructListBuilderIter:
+			return CapnBuilder.StructListBuilderIter.new(self.init_composite_list(0, n, Person.DATA_WORDS, Person.PTR_WORDS), Person.Builder.new())
 
 
 static func read_person(bytes: PackedByteArray, packed: bool = false) -> Person.Reader:
