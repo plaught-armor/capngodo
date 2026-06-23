@@ -1,12 +1,10 @@
 extends GutTest
-
 ## CG1d — a generic bound to an interface (capability) type. Interfaces are
 ## pointer types, so capnp accepts them as generic args; the CG1b/CG1c param
 ## substitution drives the INTERFACE accessor arms. Box(Handle) -> Box_Handle
 ## with get_value() -> int (cap-table index, -1 absent) and no value setter
 ## (serialization-only). Uses generated GenericIfaceCapnp (generic_iface.capnp):
 ##   Box(T) { value @0 :T }   Use { h :Box(Handle) }   interface Handle {}
-
 
 func test_interface_param_typed_to_cap_index() -> void:
 	# No cap setter (serialization-only), so an unset capability reads -1.

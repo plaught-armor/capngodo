@@ -1,6 +1,5 @@
 @tool
 extends EditorPlugin
-
 ## Editor dock for capngodo: resolve/install the capnp compiler and generate
 ## GDScript from a .capnp schema in-process (via CapnTool — no CLI, no PATH/env
 ## setup). The runtime codec and the CLI shim work without the editor; this dock
@@ -34,8 +33,8 @@ func _exit_tree() -> void:
 	# disable+re-enable rebuilds it instead of touching the freed node.
 	_installer = null
 
-
 # --- UI construction -----------------------------------------------------
+
 
 func _build_dock() -> VBoxContainer:
 	var root: VBoxContainer = VBoxContainer.new()
@@ -107,8 +106,8 @@ func _make_dialog(mode: EditorFileDialog.FileMode, access: EditorFileDialog.Acce
 	fd.file_selected.connect(handler)
 	return fd
 
-
 # --- status + actions ----------------------------------------------------
+
 
 func _refresh_status() -> void:
 	var capnp: String = CapnTool.resolve_capnp()

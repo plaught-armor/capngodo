@@ -1,9 +1,7 @@
 extends GutTest
-
 ## Field defaults: an unset field reads its declared default (wire 0 XOR default
 ## = default); a set field overrides it and round-trips. Uses the generated
 ## DefaultsCapnp (from tests/golden/defaults.capnp).
-
 
 func test_unset_fields_read_their_defaults() -> void:
 	# A freshly-built message writes no fields -> every getter returns its default.

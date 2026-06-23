@@ -1,11 +1,9 @@
 extends GutTest
-
 ## Nested union in a struct-level union (CG4): a union-group that is itself an
 ## arm of the struct-level union. The inner-arm setters must also write the
 ## OUTER discriminant, or the message reads back as a different outer arm.
 ## Uses the generated NestedUnionCapnp (from tests/golden/nested_union.capnp):
 ##   Msg { id; union { none; payload :union{text,num}; count } }
-
 
 func test_nested_union_text_arm_sets_outer_discriminant() -> void:
 	var m: NestedUnionCapnp.Msg.Builder = NestedUnionCapnp.new_msg()

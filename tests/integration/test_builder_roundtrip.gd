@@ -1,19 +1,17 @@
 extends GutTest
-
 ## Builder -> bytes -> reader round-trips. Proves the encoder produces wire the
 ## decoder reads back identically, across primitives, text/data, nesting, every
 ## list shape, the struct-upgrade rule, packed output, and forced multi-segment
 ## (double-far) output.
 
-
 func test_primitives_roundtrip() -> void:
 	# data_words=2 (16 bytes), ptr_words=1.
 	var root: CapnBuilder.StructBuilder = CapnBuilder.new_message(2, 1)
-	root.set_bool(0, true)            # bit 0 of byte 0
+	root.set_bool(0, true) # bit 0 of byte 0
 	root.set_u8(1, 250)
 	root.set_u16(2, 60000)
 	root.set_i32(4, -12345678)
-	root.set_f64(8, 1234.5)           # bytes 8-15
+	root.set_f64(8, 1234.5) # bytes 8-15
 	root.set_text(0, "hello")
 
 	var msg: CapnReader.Message = CapnReader.open(CapnBuilder.to_bytes(root), false)
@@ -29,8 +27,8 @@ func test_primitives_roundtrip() -> void:
 func test_default_xor_roundtrip() -> void:
 	# A field set to its own default must encode to wire zeros.
 	var root: CapnBuilder.StructBuilder = CapnBuilder.new_message(1, 0)
-	root.set_u16(0, 7, 7)             # value == default -> wire 0
-	root.set_u16(2, 100, 7)           # value 100, default 7 -> wire 100^7
+	root.set_u16(0, 7, 7) # value == default -> wire 0
+	root.set_u16(2, 100, 7) # value 100, default 7 -> wire 100^7
 
 	var bytes: PackedByteArray = CapnBuilder.to_bytes(root)
 	var r: CapnReader.StructReader = CapnReader.open(bytes, false).get_root()
@@ -71,7 +69,7 @@ func test_primitive_list_roundtrip() -> void:
 
 func test_composite_list_roundtrip() -> void:
 	var root: CapnBuilder.StructBuilder = CapnBuilder.new_message(0, 1)
-	var lb: CapnBuilder.ListBuilder = root.init_composite_list(0, 3, 1, 1)  # 3 structs, dw=1 pw=1
+	var lb: CapnBuilder.ListBuilder = root.init_composite_list(0, 3, 1, 1) # 3 structs, dw=1 pw=1
 	for i: int in 3:
 		var e: CapnBuilder.StructBuilder = lb.init_struct(i)
 		e.set_u32(0, 100 + i)

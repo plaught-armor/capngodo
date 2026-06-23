@@ -1,5 +1,5 @@
-class_name ConfigDemo extends Node
-
+class_name ConfigDemo
+extends Node
 ## capngodo example: app settings with schema-level defaults + an enum field.
 ##
 ## `Settings` declares a default for every field (see settings.capnp). A message
@@ -14,7 +14,6 @@ class_name ConfigDemo extends Node
 ## Generate the schema classes with:
 ##   capnp compile -o gdscript examples/config/settings.capnp
 
-
 func _ready() -> void:
 	# A brand-new config: serialize an untouched builder. Every field is unset,
 	# so every getter returns its schema default.
@@ -22,14 +21,16 @@ func _ready() -> void:
 	print("fresh config (all defaults): %s" % load_settings(fresh))
 
 	# A saved config: override two fields, leave the rest defaulted.
-	var saved: PackedByteArray = save_settings({
-		"quality": SettingsCapnp.Quality.ULTRA,
-		"max_fps": 144,
-	})
+	var saved: PackedByteArray = save_settings(
+		{
+			"quality": SettingsCapnp.Quality.ULTRA,
+			"max_fps": 144,
+		},
+	)
 	print("saved config (2 overrides):  %s" % load_settings(saved))
 
-
 # --- save / load (static + pure, testable) -------------------------------
+
 
 ## Serialize a sparse overrides dict. Any key absent stays at its schema default.
 static func save_settings(overrides: Dictionary[String, Variant]) -> PackedByteArray:

@@ -1,5 +1,5 @@
-class_name CapnPacked extends RefCounted
-
+class_name CapnPacked
+extends RefCounted
 ## Packed encoding codec (encoding.md :296-349).
 ##
 ## Each unpacked 8-byte word becomes a tag byte (bit i set iff byte i is
@@ -18,8 +18,8 @@ class_name CapnPacked extends RefCounted
 const WORD_BYTES: int = 8
 const MAX_RUN: int = 255
 
-
 # --- unpack --------------------------------------------------------------
+
 
 ## Returns the unpacked words, or an empty array on malformed input (push_error).
 static func unpack(packed: PackedByteArray) -> PackedByteArray:
@@ -67,8 +67,8 @@ static func unpack(packed: PackedByteArray) -> PackedByteArray:
 				i += raw_bytes
 	return out
 
-
 # --- pack ----------------------------------------------------------------
+
 
 static func pack(unpacked: PackedByteArray) -> PackedByteArray:
 	if unpacked.size() % WORD_BYTES != 0:
@@ -111,8 +111,8 @@ static func pack(unpacked: PackedByteArray) -> PackedByteArray:
 				out.append_array(unpacked.slice(start_word * WORD_BYTES, (start_word + run2) * WORD_BYTES))
 	return out
 
-
 # --- helpers -------------------------------------------------------------
+
 
 static func _word_is_zero(buf: PackedByteArray, base: int) -> bool:
 	for j: int in WORD_BYTES:

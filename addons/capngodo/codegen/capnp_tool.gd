@@ -1,5 +1,5 @@
-class_name CapnTool extends RefCounted
-
+class_name CapnTool
+extends RefCounted
 ## In-editor / in-process codegen glue: resolve the `capnp` compiler, run it to
 ## dump a CodeGeneratorRequest, and feed that to CapnCodegen — all without the
 ## CLI shim or a headless-Godot subprocess (the editor IS Godot). Static-fn
@@ -129,7 +129,7 @@ static func generate_to_dir(capnp: String, schema_path: String, out_dir: String,
 		r.error = "cannot create output dir %s" % out_dir
 		return r
 	for fname: String in files:
-		var path: String = out_dir.path_join(fname.get_file())  # strip any schema-path prefix
+		var path: String = out_dir.path_join(fname.get_file()) # strip any schema-path prefix
 		var w: FileAccess = FileAccess.open(path, FileAccess.WRITE)
 		if w == null:
 			r.error = "cannot write %s (err %d)" % [path, FileAccess.get_open_error()]
@@ -140,8 +140,8 @@ static func generate_to_dir(capnp: String, schema_path: String, out_dir: String,
 	r.ok = true
 	return r
 
-
 # --- helpers -------------------------------------------------------------
+
 
 static func _ensure_dir(path: String) -> bool:
 	if DirAccess.dir_exists_absolute(path):

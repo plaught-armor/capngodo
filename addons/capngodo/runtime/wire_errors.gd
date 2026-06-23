@@ -1,5 +1,5 @@
-class_name CapnError extends RefCounted
-
+class_name CapnError
+extends RefCounted
 ## POD error record for decode/encode failures.
 ##
 ## Cap'n Proto readers validate lazily (bounds, traversal limit, pointer depth)

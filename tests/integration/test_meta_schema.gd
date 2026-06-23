@@ -1,10 +1,8 @@
 extends GutTest
-
 ## Reads the real CodeGeneratorRequest that `capnp compile -o-` produced for
 ## samples/addressbook.capnp, and verifies the meta-schema reader extracts the
 ## schema graph: structs, fields, slot types, a nested enum, and a union.
 ## Fixture: tests/fixtures/addressbook.cgr.bin (committed; regenerate with capnp).
-
 
 var _cgr: CapnReader.StructReader = null
 

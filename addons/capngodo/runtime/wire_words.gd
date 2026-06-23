@@ -1,5 +1,5 @@
-class_name CapnWireWords extends RefCounted
-
+class_name CapnWireWords
+extends RefCounted
 ## Little-endian byte <-> integer/float helpers over PackedByteArray.
 ##
 ## Cap'n Proto is little-endian (encoding.md §"...little-endian"). Godot 4's
@@ -16,6 +16,7 @@ class_name CapnWireWords extends RefCounted
 const WORD_BYTES: int = 8
 
 # --- reads ---------------------------------------------------------------
+
 
 static func read_u8(buf: PackedByteArray, off: int) -> int:
 	return buf.decode_u8(off)
@@ -57,8 +58,8 @@ static func read_f32(buf: PackedByteArray, off: int) -> float:
 static func read_f64(buf: PackedByteArray, off: int) -> float:
 	return buf.decode_double(off)
 
-
 # --- writes (mutate out_buf in place) ------------------------------------
+
 
 static func write_u8(out_buf: PackedByteArray, off: int, value: int) -> void:
 	out_buf.encode_u8(off, value)
@@ -99,8 +100,8 @@ static func write_f32(out_buf: PackedByteArray, off: int, value: float) -> void:
 static func write_f64(out_buf: PackedByteArray, off: int, value: float) -> void:
 	out_buf.encode_double(off, value)
 
-
 # --- bits (bool fields + List(Bool), LSB-first per encoding.md :60/:186) --
+
 
 static func read_bit(buf: PackedByteArray, byte_off: int, bit_in_byte: int) -> bool:
 	var b: int = buf.decode_u8(byte_off)
@@ -116,8 +117,8 @@ static func write_bit(out_buf: PackedByteArray, byte_off: int, bit_in_byte: int,
 		b = b & (~mask & 0xff)
 	out_buf.encode_u8(byte_off, b)
 
-
 # --- misc ----------------------------------------------------------------
+
 
 ## Per-byte XOR of two equal-length buffers. Used for default-value masking
 ## (encoding.md :122-137). On length mismatch: push_error + empty result.

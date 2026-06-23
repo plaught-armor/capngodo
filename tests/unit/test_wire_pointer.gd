@@ -1,8 +1,6 @@
 extends GutTest
-
 ## CapnPointer codec — encode/decode round-trips + the hand-verifiable bit
 ## patterns from encoding.md (:307 struct ptr, :310 text ptr, :141 zero-size).
-
 
 func _hex(s: String) -> PackedByteArray:
 	return PackedByteArray(s.hex_decode())

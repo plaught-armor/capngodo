@@ -1,8 +1,6 @@
 extends GutTest
-
 ## CapnFraming — segment-table parse/write against the real capnp fixtures and
 ## synthetic multi-segment round-trips.
-
 
 func _read_fixture(name: String) -> PackedByteArray:
 	var f: FileAccess = FileAccess.open("res://tests/fixtures/testdata/%s" % name, FileAccess.READ)
@@ -40,10 +38,10 @@ func test_segmented_fixture_multi_segment() -> void:
 func test_write_then_read_roundtrip() -> void:
 	var segs: CapnSegments = CapnSegments.new()
 	var a: PackedByteArray = PackedByteArray()
-	a.resize(16)  # 2 words
+	a.resize(16) # 2 words
 	a.encode_u32(0, 0xcafe)
 	var b: PackedByteArray = PackedByteArray()
-	b.resize(8)  # 1 word
+	b.resize(8) # 1 word
 	b.encode_u32(0, 0xbeef)
 	segs.segments = [a, b]
 	var framed: PackedByteArray = CapnFraming.write(segs)
@@ -57,5 +55,5 @@ func test_truncated_frame_fails_loud() -> void:
 	# A header claiming 4 segments but with no body must return null, not over-read.
 	var bad: PackedByteArray = PackedByteArray()
 	bad.resize(4)
-	bad.encode_u32(0, 3)  # seg_count-1 = 3 -> 4 segments, no size table follows
+	bad.encode_u32(0, 3) # seg_count-1 = 3 -> 4 segments, no size table follows
 	assert_null(CapnFraming.read(bad))

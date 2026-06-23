@@ -1,5 +1,4 @@
 extends SceneTree
-
 ## capnpc-gdscript plugin entry. `capnp compile -o<shim>` pipes a serialized
 ## CodeGeneratorRequest to this process's stdin; we parse it (CapnSchema),
 ## generate GDScript (CapnCodegen), and write each file to the output dir.
@@ -9,7 +8,6 @@ extends SceneTree
 ##   args[1] = path to the CodeGeneratorRequest (shim spools stdin here, since
 ##             Godot's FileAccess cannot open /dev/stdin)
 ## Exit code is non-zero on failure so capnp reports it.
-
 
 func _initialize() -> void:
 	# SceneTree.quit(code) sets the process exit code so capnp sees failures.

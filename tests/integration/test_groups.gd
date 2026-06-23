@@ -1,12 +1,10 @@
 extends GutTest
-
 ## Named (non-union) groups (CG3): a group with no discriminant is a sub-
 ## namespace whose fields share the parent's layout. Codegen flattens them to
 ## get_<group>_<field>() / set_<group>_<field>(). Uses the generated GroupsCapnp
 ## (from tests/golden/groups.capnp):
 ##   Entity { name; transform :group{posX,posY}; physics :group{mass,
 ##            velocity :group{dx,dy}, label}; state :group{hp, mode :union{...}} }
-
 
 func test_scalar_group_round_trips() -> void:
 	var e: GroupsCapnp.Entity.Builder = GroupsCapnp.new_entity()

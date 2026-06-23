@@ -1,5 +1,5 @@
-class_name CapnTextData extends RefCounted
-
+class_name CapnTextData
+extends RefCounted
 ## Text/Data helpers. Both are List(UInt8) on the wire (encoding.md :76-86).
 ## Data is raw bytes. Text is the same but the last byte MUST be a NUL
 ## terminator, included in the list length but not in the reported string.

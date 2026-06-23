@@ -344,7 +344,7 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 	lines.append(TAB + TAB + TAB + "var o: Reader = Reader.new()")
 	lines.append(
 		TAB + TAB + TAB
-		+ "o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)"
+		+ "o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)",
 	)
 	lines.append(TAB + TAB + TAB + "return o")
 	if struct_disc >= 0:

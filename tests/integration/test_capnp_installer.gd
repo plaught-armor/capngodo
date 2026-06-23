@@ -1,5 +1,4 @@
 extends GutTest
-
 ## CapnInstaller: the platform asset-name contract and the zip-extraction step.
 ## The network path (GitHub release fetch/download) needs real release assets
 ## and is verified manually; here we cover what's deterministic: the asset name
@@ -7,7 +6,9 @@ extends GutTest
 ## cache path with executable content intact.
 
 const KNOWN_ASSETS: PackedStringArray = [
-	"capnp-windows-x86_64.zip", "capnp-macos-universal.zip", "capnp-linux-x86_64.zip",
+	"capnp-windows-x86_64.zip",
+	"capnp-macos-universal.zip",
+	"capnp-linux-x86_64.zip",
 ]
 
 

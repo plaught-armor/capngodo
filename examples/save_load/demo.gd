@@ -1,5 +1,5 @@
-class_name SaveLoadDemo extends Node
-
+class_name SaveLoadDemo
+extends Node
 ## Minimal capngodo example: save/load game state to Cap'n Proto bytes.
 ##
 ## Serializes a plain Dictionary (player name, level, hp, position, inventory)
@@ -21,8 +21,8 @@ func _ready() -> void:
 		"pos_x": 12.5,
 		"pos_y": -3.25,
 		"inventory": [
-			{"name": "sword", "count": 1},
-			{"name": "potion", "count": 5},
+			{ "name": "sword", "count": 1 },
+			{ "name": "potion", "count": 5 },
 		],
 	}
 	var err: int = save_game(SAVE_PATH, state)
@@ -47,7 +47,7 @@ static func save_game(path: String, state: Dictionary) -> int:
 	b.set_pos_y(state["pos_y"])
 
 	var items: Array = state["inventory"]
-	var slots: Array = b.init_inventory(items.size())   # Array of Item.Builder
+	var slots: Array = b.init_inventory(items.size()) # Array of Item.Builder
 	for i: int in items.size():
 		var item: Dictionary = items[i]
 		var slot: GameStateCapnp.Item.Builder = slots[i]
@@ -66,7 +66,7 @@ static func save_game(path: String, state: Dictionary) -> int:
 static func load_game(path: String) -> Dictionary:
 	var f: FileAccess = FileAccess.open(path, FileAccess.READ)
 	if f == null:
-		return {}
+		return { }
 	var bytes: PackedByteArray = f.get_buffer(f.get_length())
 	f.close()
 
@@ -75,7 +75,7 @@ static func load_game(path: String) -> Dictionary:
 	var inventory: Array = []
 	for i: int in inv_readers.size():
 		var it: GameStateCapnp.Item.Reader = inv_readers[i]
-		inventory.append({"name": it.get_name(), "count": it.get_count()})
+		inventory.append({ "name": it.get_name(), "count": it.get_count() })
 
 	return {
 		"player_name": r.get_player_name(),

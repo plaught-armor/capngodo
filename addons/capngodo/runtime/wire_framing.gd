@@ -1,5 +1,5 @@
-class_name CapnFraming extends RefCounted
-
+class_name CapnFraming
+extends RefCounted
 ## Stream framing: the recommended segment-table envelope (encoding.md :288-294).
 ##
 ## Layout (all u32 little-endian):
@@ -13,7 +13,7 @@ const WORD_BYTES: int = 8
 # Defensive ceilings against malicious headers (NASA rule 2/5). A real message
 # never approaches these; they exist so a corrupt count can't drive an OOM.
 const MAX_SEGMENTS: int = 1 << 20
-const MAX_TOTAL_WORDS: int = 1 << 28  # 2 GiB of message
+const MAX_TOTAL_WORDS: int = 1 << 28 # 2 GiB of message
 
 
 static func read(buf: PackedByteArray, off: int = 0) -> CapnSegments:

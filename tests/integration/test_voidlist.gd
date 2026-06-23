@@ -1,13 +1,11 @@
 extends GutTest
-
 ## List(Void) (CG8): a void list carries only a length. The builder must use
 ## ElemSize.VOID (not the pointer fallback) so the count round-trips and the
 ## sibling pointer field is undisturbed. Uses the generated VoidlistCapnp.
 
-
 func test_void_list_length_round_trips() -> void:
 	var p: VoidlistCapnp.Pings.Builder = VoidlistCapnp.new_pings()
-	var _lb: CapnBuilder.ListBuilder = p.init_voids(3)  # void elements: nothing to set
+	var _lb: CapnBuilder.ListBuilder = p.init_voids(3) # void elements: nothing to set
 	p.set_label("ok")
 
 	var r: VoidlistCapnp.Pings.Reader = VoidlistCapnp.read_pings(p.to_bytes())
