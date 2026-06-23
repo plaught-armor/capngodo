@@ -56,13 +56,8 @@ class Root extends RefCounted:
 				out[i] = lr.get_text(i)
 			return out
 
-		func get_scores() -> Array[int]:
-			var lr: CapnReader.ListReader = self.get_list(2)
-			var out: Array[int] = []
-			out.resize(lr.size())
-			for i: int in lr.size():
-				out[i] = lr.get_i32(i)
-			return out
+		func get_scores() -> PackedInt32Array:
+			return self.get_list(2).to_int32_array()
 
 		func get_child() -> Child.Reader:
 			var r: Child.Reader = Child.Reader.new()
@@ -104,8 +99,9 @@ class Root extends RefCounted:
 		func init_tags(n: int) -> CapnBuilder.ListBuilder:
 			return _b.init_list(1, CapnPointer.ElemSize.POINTER, n)
 
-		func init_scores(n: int) -> CapnBuilder.ListBuilder:
-			return _b.init_list(2, CapnPointer.ElemSize.FOUR_BYTES, n)
+		func set_scores(value: PackedInt32Array) -> void:
+			var lb: CapnBuilder.ListBuilder = _b.init_list(2, CapnPointer.ElemSize.FOUR_BYTES, value.size())
+			lb.set_int32_array(value)
 
 		func init_child() -> Child.Builder:
 			return Child.Builder.wrap(_b.init_struct(3, Child.DATA_WORDS, Child.PTR_WORDS))

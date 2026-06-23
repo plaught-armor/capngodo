@@ -84,14 +84,11 @@ func test_mono_box_struct_round_trips() -> void:
 func test_mono_box_list_round_trips() -> void:
 	var c: GenericCapnp.Container_.Builder = GenericCapnp.new_container_()
 	var bl: GenericCapnp.Box_List_Int32.Builder = c.init_boxed_list()
-	var lb: CapnBuilder.ListBuilder = bl.init_value(3)
-	lb.set_i32(0, 10)
-	lb.set_i32(1, 20)
-	lb.set_i32(2, 30)
+	bl.set_value(PackedInt32Array([10, 20, 30]))
 
 	var r: GenericCapnp.Container_.Reader = GenericCapnp.read_container_(c.to_bytes())
-	var vals: Array[int] = r.get_boxed_list().get_value()
-	assert_eq(vals, [10, 20, 30] as Array[int], "typed list param -> Array[int]")
+	var vals: PackedInt32Array = r.get_boxed_list().get_value()
+	assert_eq(vals, PackedInt32Array([10, 20, 30]), "typed list param -> PackedInt32Array")
 
 
 func test_mono_box_text_unset_reads_empty() -> void:
