@@ -832,31 +832,33 @@ static func _disc_byte(gnode: CapnReader.StructReader) -> int:
 
 
 # Variant builtin type names (not in ClassDB) + GDScript keywords. ClassDB
-# covers every engine class (Node, Resource, ...) dynamically.
-static var _VARIANT_TYPES: PackedStringArray = [
-	"bool", "int", "float", "String", "StringName", "NodePath", "RID",
-	"Object", "Callable", "Signal", "Dictionary", "Array", "Variant", "Nil", "void",
-	"Vector2", "Vector2i", "Vector3", "Vector3i", "Vector4", "Vector4i",
-	"Rect2", "Rect2i", "Transform2D", "Transform3D", "Plane", "Quaternion",
-	"AABB", "Basis", "Projection", "Color",
-	"PackedByteArray", "PackedInt32Array", "PackedInt64Array", "PackedFloat32Array",
-	"PackedFloat64Array", "PackedStringArray", "PackedVector2Array",
-	"PackedVector3Array", "PackedVector4Array", "PackedColorArray",
-]
-static var _GD_KEYWORDS: PackedStringArray = [
-	"if", "elif", "else", "for", "while", "match", "when", "break", "continue",
-	"pass", "return", "class", "class_name", "extends", "is", "as", "self",
-	"super", "signal", "func", "static", "const", "enum", "var", "breakpoint",
-	"preload", "await", "yield", "assert", "void", "and", "or", "not", "in",
-	"true", "false", "null", "PI", "TAU", "INF", "NAN",
-]
+# covers every engine class (Node, Resource, ...) dynamically. Dictionaries (not
+# PackedStringArray) for O(1) `.has()` — these are membership sets, queried per
+# emitted identifier, never iterated (P8).
+static var _VARIANT_TYPES: Dictionary[String, bool] = {
+	"bool": true, "int": true, "float": true, "String": true, "StringName": true, "NodePath": true, "RID": true,
+	"Object": true, "Callable": true, "Signal": true, "Dictionary": true, "Array": true, "Variant": true, "Nil": true, "void": true,
+	"Vector2": true, "Vector2i": true, "Vector3": true, "Vector3i": true, "Vector4": true, "Vector4i": true,
+	"Rect2": true, "Rect2i": true, "Transform2D": true, "Transform3D": true, "Plane": true, "Quaternion": true,
+	"AABB": true, "Basis": true, "Projection": true, "Color": true,
+	"PackedByteArray": true, "PackedInt32Array": true, "PackedInt64Array": true, "PackedFloat32Array": true,
+	"PackedFloat64Array": true, "PackedStringArray": true, "PackedVector2Array": true,
+	"PackedVector3Array": true, "PackedVector4Array": true, "PackedColorArray": true,
+}
+static var _GD_KEYWORDS: Dictionary[String, bool] = {
+	"if": true, "elif": true, "else": true, "for": true, "while": true, "match": true, "when": true, "break": true, "continue": true,
+	"pass": true, "return": true, "class": true, "class_name": true, "extends": true, "is": true, "as": true, "self": true,
+	"super": true, "signal": true, "func": true, "static": true, "const": true, "enum": true, "var": true, "breakpoint": true,
+	"preload": true, "await": true, "yield": true, "assert": true, "void": true, "and": true, "or": true, "not": true, "in": true,
+	"true": true, "false": true, "null": true, "PI": true, "TAU": true, "INF": true, "NAN": true,
+}
 # Object getter stems a field would shadow via get_<stem>() — Readers/Builders
 # extend RefCounted (Object), so only Object's own getters matter (NOT Node's
 # get_name/get_path/get_owner). "class" is also a keyword, covered separately.
-static var _RESERVED_MEMBERS: PackedStringArray = [
-	"script", "meta", "instance_id", "method_list", "property_list",
-	"signal_list", "incoming_connections", "indexed",
-]
+static var _RESERVED_MEMBERS: Dictionary[String, bool] = {
+	"script": true, "meta": true, "instance_id": true, "method_list": true, "property_list": true,
+	"signal_list": true, "incoming_connections": true, "indexed": true,
+}
 
 
 ## True if `name` would collide with a Godot type or GDScript keyword as a
@@ -1333,7 +1335,8 @@ static func _inherits_scope(t: CapnReader.StructReader, sid: int) -> bool:
 ## Outer(Int).Inner, which share the same inner node id but differ in subst.
 static func _inherit_key(inner_id: int, subst: Dictionary[int, CapnReader.StructReader]) -> String:
 	var s: String = str(inner_id)
-	var idxs: Array = subst.keys()
+	var idxs: Array[int] = []
+	idxs.assign(subst.keys())
 	idxs.sort()
 	for k: int in idxs:
 		s += "#" + _sig_of_type(subst[k])
@@ -1345,7 +1348,8 @@ static func _inherit_key(inner_id: int, subst: Dictionary[int, CapnReader.Struct
 static func _mono_name_from_subst(inner_flat: String, subst: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String]) -> String:
 	var parts: PackedStringArray = PackedStringArray()
 	parts.append(_basename(inner_flat))
-	var idxs: Array = subst.keys()
+	var idxs: Array[int] = []
+	idxs.assign(subst.keys())
 	idxs.sort()
 	for k: int in idxs:
 		parts.append(_arg_name_of_type(subst[k], flat_by_id))
