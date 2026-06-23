@@ -18,12 +18,15 @@ static func data_from(buf: PackedByteArray, byte_off: int, count: int) -> Packed
 
 
 ## UTF-8 decode of a text-list, dropping the trailing NUL terminator.
+## Single slice: trim the NUL from the span end before copying, rather than
+## slicing the full span and re-slicing to drop the last byte.
 static func text_from(buf: PackedByteArray, byte_off: int, count: int) -> String:
-	var bytes: PackedByteArray = data_from(buf, byte_off, count)
-	var n: int = bytes.size()
-	if n > 0 and bytes[n - 1] == 0:
-		bytes = bytes.slice(0, n - 1)
-	return bytes.get_string_from_utf8()
+	if count <= 0:
+		return ""
+	var end: int = byte_off + count
+	if buf[end - 1] == 0:
+		end -= 1
+	return buf.slice(byte_off, end).get_string_from_utf8()
 
 
 ## UTF-8 bytes for a string plus the NUL terminator — the on-wire text length.

@@ -8,16 +8,14 @@ class Child extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_note() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -38,22 +36,20 @@ class Root extends RefCounted:
 	const PTR_WORDS: int = 5
 	enum Status { ACTIVE, BANNED }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_id() -> int:
-			return _r.get_u32(0, 0)
+			return self.get_u32(0, 0)
 
 		func get_name() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_tags() -> Array[String]:
-			var lr: CapnReader.ListReader = _r.get_list(1)
+			var lr: CapnReader.ListReader = self.get_list(1)
 			var out: Array[String] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
@@ -61,7 +57,7 @@ class Root extends RefCounted:
 			return out
 
 		func get_scores() -> Array[int]:
-			var lr: CapnReader.ListReader = _r.get_list(2)
+			var lr: CapnReader.ListReader = self.get_list(2)
 			var out: Array[int] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
@@ -69,22 +65,24 @@ class Root extends RefCounted:
 			return out
 
 		func get_child() -> Child.Reader:
-			return Child.Reader.wrap(_r.get_struct(3))
+			var r: Child.Reader = Child.Reader.new()
+			self.fill_struct(3, r)
+			return r
 
 		func get_kind() -> Kind:
-			return _r.get_u16(4, 0) as Kind
+			return self.get_u16(4, 0) as Kind
 
 		func status_which() -> int:
-			return _r.get_u16(6, 0)
+			return self.get_u16(6, 0)
 
 		func is_status_active() -> bool:
-			return _r.get_u16(6, 0) == 0
+			return self.get_u16(6, 0) == 0
 
 		func is_status_banned() -> bool:
-			return _r.get_u16(6, 0) == 1
+			return self.get_u16(6, 0) == 1
 
 		func get_status_banned() -> String:
-			return _r.get_text(4, "")
+			return self.get_text(4, "")
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -125,14 +123,18 @@ class Root extends RefCounted:
 
 static func read_child(bytes: PackedByteArray, packed: bool = false) -> Child.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Child.Reader.wrap(msg.get_root())
+	var r: Child.Reader = Child.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_child() -> Child.Builder:
 	return Child.Builder.wrap(CapnBuilder.new_message(Child.DATA_WORDS, Child.PTR_WORDS))
 
 static func read_root(bytes: PackedByteArray, packed: bool = false) -> Root.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Root.Reader.wrap(msg.get_root())
+	var r: Root.Reader = Root.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_root() -> Root.Builder:
 	return Root.Builder.wrap(CapnBuilder.new_message(Root.DATA_WORDS, Root.PTR_WORDS))

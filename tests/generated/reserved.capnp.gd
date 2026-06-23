@@ -10,28 +10,26 @@ class Node_ extends RefCounted:
 	const DATA_WORDS: int = 2
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_value() -> int:
-			return _r.get_i32(0, 0)
+			return self.get_i32(0, 0)
 
 		func get_class_() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_color() -> Color_:
-			return _r.get_u16(4, 0) as Color_
+			return self.get_u16(4, 0) as Color_
 
 		func get_instance_id_() -> int:
-			return _r.get_i32(8, 0)
+			return self.get_i32(8, 0)
 
 		func get_kind() -> Math:
-			return _r.get_u16(6, 0) as Math
+			return self.get_u16(6, 0) as Math
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -63,16 +61,16 @@ class Holder extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_child() -> Node_.Reader:
-			return Node_.Reader.wrap(_r.get_struct(0))
+			var r: Node_.Reader = Node_.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -91,14 +89,18 @@ class Holder extends RefCounted:
 
 static func read_node_(bytes: PackedByteArray, packed: bool = false) -> Node_.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Node_.Reader.wrap(msg.get_root())
+	var r: Node_.Reader = Node_.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_node_() -> Node_.Builder:
 	return Node_.Builder.wrap(CapnBuilder.new_message(Node_.DATA_WORDS, Node_.PTR_WORDS))
 
 static func read_holder(bytes: PackedByteArray, packed: bool = false) -> Holder.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Holder.Reader.wrap(msg.get_root())
+	var r: Holder.Reader = Holder.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_holder() -> Holder.Builder:
 	return Holder.Builder.wrap(CapnBuilder.new_message(Holder.DATA_WORDS, Holder.PTR_WORDS))

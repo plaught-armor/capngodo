@@ -1,21 +1,19 @@
 class_name NestedListsCapnp extends RefCounted
 
-## GENERATED from nested_lists.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/nested_lists.capnp by capnpc-gdscript — do not edit.
 
 class Cell extends RefCounted:
 	const DATA_WORDS: int = 1
 	const PTR_WORDS: int = 0
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_v() -> int:
-			return _r.get_i32(0, 0)
+			return self.get_i32(0, 0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -35,16 +33,14 @@ class Nested extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 4
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_matrix() -> Array[CapnReader.ListReader]:
-			var lr: CapnReader.ListReader = _r.get_list(0)
+			var lr: CapnReader.ListReader = self.get_list(0)
 			var out: Array[CapnReader.ListReader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
@@ -52,7 +48,7 @@ class Nested extends RefCounted:
 			return out
 
 		func get_rows() -> Array[CapnReader.ListReader]:
-			var lr: CapnReader.ListReader = _r.get_list(1)
+			var lr: CapnReader.ListReader = self.get_list(1)
 			var out: Array[CapnReader.ListReader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
@@ -60,7 +56,7 @@ class Nested extends RefCounted:
 			return out
 
 		func get_cells() -> Array[CapnReader.ListReader]:
-			var lr: CapnReader.ListReader = _r.get_list(2)
+			var lr: CapnReader.ListReader = self.get_list(2)
 			var out: Array[CapnReader.ListReader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
@@ -68,7 +64,7 @@ class Nested extends RefCounted:
 			return out
 
 		func get_handles() -> Array[int]:
-			var lr: CapnReader.ListReader = _r.get_list(3)
+			var lr: CapnReader.ListReader = self.get_list(3)
 			var out: Array[int] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
@@ -100,14 +96,18 @@ class Nested extends RefCounted:
 
 static func read_cell(bytes: PackedByteArray, packed: bool = false) -> Cell.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Cell.Reader.wrap(msg.get_root())
+	var r: Cell.Reader = Cell.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_cell() -> Cell.Builder:
 	return Cell.Builder.wrap(CapnBuilder.new_message(Cell.DATA_WORDS, Cell.PTR_WORDS))
 
 static func read_nested(bytes: PackedByteArray, packed: bool = false) -> Nested.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Nested.Reader.wrap(msg.get_root())
+	var r: Nested.Reader = Nested.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_nested() -> Nested.Builder:
 	return Nested.Builder.wrap(CapnBuilder.new_message(Nested.DATA_WORDS, Nested.PTR_WORDS))

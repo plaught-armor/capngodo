@@ -6,16 +6,16 @@ class Outer extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_inner() -> Outer_Inner.Reader:
-			return Outer_Inner.Reader.wrap(_r.get_struct(0))
+			var r: Outer_Inner.Reader = Outer_Inner.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -35,31 +35,29 @@ class Outer_Inner extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 2
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func has_value() -> bool:
-			return _r.has_ptr(0)
+			return self.has_ptr(0)
 
 		func get_value_struct() -> CapnReader.StructReader:
-			return _r.get_struct(0)
+			return self.get_struct(0)
 
 		func get_value_list() -> CapnReader.ListReader:
-			return _r.get_list(0)
+			return self.get_list(0)
 
 		func get_value_text() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_value_data() -> PackedByteArray:
-			return _r.get_data(0)
+			return self.get_data(0)
 
 		func get_label() -> String:
-			return _r.get_text(1, "")
+			return self.get_text(1, "")
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -94,16 +92,16 @@ class Use extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_o() -> Outer_Text.Reader:
-			return Outer_Text.Reader.wrap(_r.get_struct(0))
+			var r: Outer_Text.Reader = Outer_Text.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -123,16 +121,16 @@ class Outer_Text extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_inner() -> Outer_Inner_Text.Reader:
-			return Outer_Inner_Text.Reader.wrap(_r.get_struct(0))
+			var r: Outer_Inner_Text.Reader = Outer_Inner_Text.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -152,19 +150,17 @@ class Outer_Inner_Text extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 2
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_value() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_label() -> String:
-			return _r.get_text(1, "")
+			return self.get_text(1, "")
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -186,14 +182,18 @@ class Outer_Inner_Text extends RefCounted:
 
 static func read_outer(bytes: PackedByteArray, packed: bool = false) -> Outer.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Outer.Reader.wrap(msg.get_root())
+	var r: Outer.Reader = Outer.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_outer() -> Outer.Builder:
 	return Outer.Builder.wrap(CapnBuilder.new_message(Outer.DATA_WORDS, Outer.PTR_WORDS))
 
 static func read_use(bytes: PackedByteArray, packed: bool = false) -> Use.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Use.Reader.wrap(msg.get_root())
+	var r: Use.Reader = Use.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_use() -> Use.Builder:
 	return Use.Builder.wrap(CapnBuilder.new_message(Use.DATA_WORDS, Use.PTR_WORDS))

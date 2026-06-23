@@ -7,40 +7,38 @@ class Command extends RefCounted:
 	const PTR_WORDS: int = 2
 	enum Body { CHAT, MOVE, QUIT }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_id() -> int:
-			return _r.get_u32(0, 0)
+			return self.get_u32(0, 0)
 
 		func body_which() -> int:
-			return _r.get_u16(4, 0)
+			return self.get_u16(4, 0)
 
 		func is_body_chat() -> bool:
-			return _r.get_u16(4, 0) == 0
+			return self.get_u16(4, 0) == 0
 
 		func get_body_chat_sender() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_body_chat_text() -> String:
-			return _r.get_text(1, "")
+			return self.get_text(1, "")
 
 		func is_body_move() -> bool:
-			return _r.get_u16(4, 0) == 1
+			return self.get_u16(4, 0) == 1
 
 		func get_body_move_dx() -> int:
-			return _r.get_i32(8, 0)
+			return self.get_i32(8, 0)
 
 		func get_body_move_dy() -> int:
-			return _r.get_i32(12, 0)
+			return self.get_i32(12, 0)
 
 		func is_body_quit() -> bool:
-			return _r.get_u16(4, 0) == 2
+			return self.get_u16(4, 0) == 2
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -78,7 +76,9 @@ class Command extends RefCounted:
 
 static func read_command(bytes: PackedByteArray, packed: bool = false) -> Command.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Command.Reader.wrap(msg.get_root())
+	var r: Command.Reader = Command.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_command() -> Command.Builder:
 	return Command.Builder.wrap(CapnBuilder.new_message(Command.DATA_WORDS, Command.PTR_WORDS))

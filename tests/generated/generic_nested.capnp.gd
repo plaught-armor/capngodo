@@ -1,21 +1,19 @@
 class_name GenericNestedCapnp extends RefCounted
 
-## GENERATED from generic_nested.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/generic_nested.capnp by capnpc-gdscript — do not edit.
 
 class Cell extends RefCounted:
 	const DATA_WORDS: int = 1
 	const PTR_WORDS: int = 0
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_v() -> int:
-			return _r.get_i32(0, 0)
+			return self.get_i32(0, 0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -35,28 +33,26 @@ class Box extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func has_value() -> bool:
-			return _r.has_ptr(0)
+			return self.has_ptr(0)
 
 		func get_value_struct() -> CapnReader.StructReader:
-			return _r.get_struct(0)
+			return self.get_struct(0)
 
 		func get_value_list() -> CapnReader.ListReader:
-			return _r.get_list(0)
+			return self.get_list(0)
 
 		func get_value_text() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_value_data() -> PackedByteArray:
-			return _r.get_data(0)
+			return self.get_data(0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -88,19 +84,21 @@ class Holder extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 2
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_bb() -> Box_Box_Text.Reader:
-			return Box_Box_Text.Reader.wrap(_r.get_struct(0))
+			var r: Box_Box_Text.Reader = Box_Box_Text.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 		func get_bbc() -> Box_Box_Cell.Reader:
-			return Box_Box_Cell.Reader.wrap(_r.get_struct(1))
+			var r: Box_Box_Cell.Reader = Box_Box_Cell.Reader.new()
+			self.fill_struct(1, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -123,16 +121,14 @@ class Box_Text extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_value() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -152,16 +148,16 @@ class Box_Box_Text extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_value() -> Box_Text.Reader:
-			return Box_Text.Reader.wrap(_r.get_struct(0))
+			var r: Box_Text.Reader = Box_Text.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -181,16 +177,16 @@ class Box_Cell extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_value() -> Cell.Reader:
-			return Cell.Reader.wrap(_r.get_struct(0))
+			var r: Cell.Reader = Cell.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -210,16 +206,16 @@ class Box_Box_Cell extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_value() -> Box_Cell.Reader:
-			return Box_Cell.Reader.wrap(_r.get_struct(0))
+			var r: Box_Cell.Reader = Box_Cell.Reader.new()
+			self.fill_struct(0, r)
+			return r
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -238,21 +234,27 @@ class Box_Box_Cell extends RefCounted:
 
 static func read_cell(bytes: PackedByteArray, packed: bool = false) -> Cell.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Cell.Reader.wrap(msg.get_root())
+	var r: Cell.Reader = Cell.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_cell() -> Cell.Builder:
 	return Cell.Builder.wrap(CapnBuilder.new_message(Cell.DATA_WORDS, Cell.PTR_WORDS))
 
 static func read_box(bytes: PackedByteArray, packed: bool = false) -> Box.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Box.Reader.wrap(msg.get_root())
+	var r: Box.Reader = Box.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_box() -> Box.Builder:
 	return Box.Builder.wrap(CapnBuilder.new_message(Box.DATA_WORDS, Box.PTR_WORDS))
 
 static func read_holder(bytes: PackedByteArray, packed: bool = false) -> Holder.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Holder.Reader.wrap(msg.get_root())
+	var r: Holder.Reader = Holder.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_holder() -> Holder.Builder:
 	return Holder.Builder.wrap(CapnBuilder.new_message(Holder.DATA_WORDS, Holder.PTR_WORDS))

@@ -1,6 +1,6 @@
 class_name DefaultsCapnp extends RefCounted
 
-## GENERATED from defaults.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/defaults.capnp by capnpc-gdscript — do not edit.
 
 enum Shade { RED, GREEN, BLUE }
 
@@ -8,43 +8,41 @@ class Defaults extends RefCounted:
 	const DATA_WORDS: int = 3
 	const PTR_WORDS: int = 4
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_i32f() -> int:
-			return _r.get_i32(0, -42)
+			return self.get_i32(0, -42)
 
 		func get_u16f() -> int:
-			return _r.get_u16(4, 7)
+			return self.get_u16(4, 7)
 
 		func get_boolf() -> bool:
-			return _r.get_bool(48, true)
+			return self.get_bool(48, true)
 
 		func get_f32f() -> float:
-			return _r.get_f32(8, 1069547520)
+			return self.get_f32(8, 1069547520)
 
 		func get_f64f() -> float:
-			return _r.get_f64(16, 4612811918334230528)
+			return self.get_f64(16, 4612811918334230528)
 
 		func get_textf() -> String:
-			return _r.get_text(0, "hello")
+			return self.get_text(0, "hello")
 
 		func get_enumf() -> Shade:
-			return _r.get_u16(12, 1) as Shade
+			return self.get_u16(12, 1) as Shade
 
 		func get_dataf() -> PackedByteArray:
-			return _r.get_data(1, PackedByteArray([222, 173, 190, 239]))
+			return self.get_data(1, PackedByteArray([222, 173, 190, 239]))
 
 		func get_datas() -> PackedByteArray:
-			return _r.get_data(2, PackedByteArray([97, 98, 99]))
+			return self.get_data(2, PackedByteArray([97, 98, 99]))
 
 		func get_emptyd() -> PackedByteArray:
-			return _r.get_data(3, PackedByteArray())
+			return self.get_data(3, PackedByteArray())
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -90,7 +88,9 @@ class Defaults extends RefCounted:
 
 static func read_defaults(bytes: PackedByteArray, packed: bool = false) -> Defaults.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Defaults.Reader.wrap(msg.get_root())
+	var r: Defaults.Reader = Defaults.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_defaults() -> Defaults.Builder:
 	return Defaults.Builder.wrap(CapnBuilder.new_message(Defaults.DATA_WORDS, Defaults.PTR_WORDS))

@@ -9,51 +9,51 @@ class Person extends RefCounted:
 	const PTR_WORDS: int = 4
 	enum Employment { UNEMPLOYED, EMPLOYER, SCHOOL, SELF_EMPLOYED }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_id() -> int:
-			return _r.get_u32(0, 0)
+			return self.get_u32(0, 0)
 
 		func get_name() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_email() -> String:
-			return _r.get_text(1, "")
+			return self.get_text(1, "")
 
 		func get_phones() -> Array[Person_PhoneNumber.Reader]:
-			var lr: CapnReader.ListReader = _r.get_list(2)
+			var lr: CapnReader.ListReader = self.get_list(2)
 			var out: Array[Person_PhoneNumber.Reader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
-				out[i] = Person_PhoneNumber.Reader.wrap(lr.get_struct(i))
+				var r: Person_PhoneNumber.Reader = Person_PhoneNumber.Reader.new()
+				lr.fill_struct(i, r)
+				out[i] = r
 			return out
 
 		func employment_which() -> int:
-			return _r.get_u16(4, 0)
+			return self.get_u16(4, 0)
 
 		func is_employment_unemployed() -> bool:
-			return _r.get_u16(4, 0) == 0
+			return self.get_u16(4, 0) == 0
 
 		func is_employment_employer() -> bool:
-			return _r.get_u16(4, 0) == 1
+			return self.get_u16(4, 0) == 1
 
 		func get_employment_employer() -> String:
-			return _r.get_text(3, "")
+			return self.get_text(3, "")
 
 		func is_employment_school() -> bool:
-			return _r.get_u16(4, 0) == 2
+			return self.get_u16(4, 0) == 2
 
 		func get_employment_school() -> String:
-			return _r.get_text(3, "")
+			return self.get_text(3, "")
 
 		func is_employment_self_employed() -> bool:
-			return _r.get_u16(4, 0) == 3
+			return self.get_u16(4, 0) == 3
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -101,19 +101,17 @@ class Person_PhoneNumber extends RefCounted:
 	const DATA_WORDS: int = 1
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_number() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_type() -> Person_PhoneNumber_Type:
-			return _r.get_u16(0, 0) as Person_PhoneNumber_Type
+			return self.get_u16(0, 0) as Person_PhoneNumber_Type
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -136,20 +134,20 @@ class AddressBook extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_people() -> Array[Person.Reader]:
-			var lr: CapnReader.ListReader = _r.get_list(0)
+			var lr: CapnReader.ListReader = self.get_list(0)
 			var out: Array[Person.Reader] = []
 			out.resize(lr.size())
 			for i: int in lr.size():
-				out[i] = Person.Reader.wrap(lr.get_struct(i))
+				var r: Person.Reader = Person.Reader.new()
+				lr.fill_struct(i, r)
+				out[i] = r
 			return out
 
 	class Builder extends RefCounted:
@@ -174,14 +172,18 @@ class AddressBook extends RefCounted:
 
 static func read_person(bytes: PackedByteArray, packed: bool = false) -> Person.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Person.Reader.wrap(msg.get_root())
+	var r: Person.Reader = Person.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_person() -> Person.Builder:
 	return Person.Builder.wrap(CapnBuilder.new_message(Person.DATA_WORDS, Person.PTR_WORDS))
 
 static func read_address_book(bytes: PackedByteArray, packed: bool = false) -> AddressBook.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return AddressBook.Reader.wrap(msg.get_root())
+	var r: AddressBook.Reader = AddressBook.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_address_book() -> AddressBook.Builder:
 	return AddressBook.Builder.wrap(CapnBuilder.new_message(AddressBook.DATA_WORDS, AddressBook.PTR_WORDS))

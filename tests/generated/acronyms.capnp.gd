@@ -1,40 +1,38 @@
 class_name AcronymsCapnp extends RefCounted
 
-## GENERATED from acronyms.capnp by capnpc-gdscript — do not edit.
+## GENERATED from mnt/based_backup/Repos/capngodo/tests/golden/acronyms.capnp by capnpc-gdscript — do not edit.
 
 class HTTPServer extends RefCounted:
 	const DATA_WORDS: int = 2
 	const PTR_WORDS: int = 1
 	enum ResponseKind { OK_STATUS, ERR_STATUS }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_parse_http_request() -> bool:
-			return _r.get_bool(0, false)
+			return self.get_bool(0, false)
 
 		func get_server_id() -> int:
-			return _r.get_i32(4, 0)
+			return self.get_i32(4, 0)
 
 		func get_url_field() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func response_kind_which() -> int:
-			return _r.get_u16(2, 0)
+			return self.get_u16(2, 0)
 
 		func is_response_kind_ok_status() -> bool:
-			return _r.get_u16(2, 0) == 0
+			return self.get_u16(2, 0) == 0
 
 		func is_response_kind_err_status() -> bool:
-			return _r.get_u16(2, 0) == 1
+			return self.get_u16(2, 0) == 1
 
 		func get_response_kind_err_status() -> int:
-			return _r.get_i32(8, 0)
+			return self.get_i32(8, 0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -66,7 +64,9 @@ class HTTPServer extends RefCounted:
 
 static func read_http_server(bytes: PackedByteArray, packed: bool = false) -> HTTPServer.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return HTTPServer.Reader.wrap(msg.get_root())
+	var r: HTTPServer.Reader = HTTPServer.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_http_server() -> HTTPServer.Builder:
 	return HTTPServer.Builder.wrap(CapnBuilder.new_message(HTTPServer.DATA_WORDS, HTTPServer.PTR_WORDS))

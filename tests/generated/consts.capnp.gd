@@ -1,6 +1,6 @@
 class_name ConstsCapnp extends RefCounted
 
-## GENERATED from consts.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/consts.capnp by capnpc-gdscript — do not edit.
 
 enum Shade { RED, GREEN, BLUE }
 

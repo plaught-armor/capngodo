@@ -61,13 +61,25 @@ class Message extends RefCounted:
 		return _scratch
 
 	func get_root() -> StructReader:
+		var r: StructReader = StructReader.new()
+		fill_root(r)
+		return r
+
+	## Populate `out` (a StructReader or a generated Reader subclass) from the root
+	## pointer, instead of allocating a fresh reader to wrap. Lets a typed Reader
+	## that extends StructReader be the single allocation — see fill_struct. `out`
+	## must be freshly constructed: only `msg` is written on the empty path, the
+	## other fields are left at their .new() defaults (a zero-size reader).
+	func fill_root(out: StructReader) -> void:
 		if segments == null or segments.segment_count() == 0:
 			fail("empty message")
-			return StructReader.empty(self)
+			out.msg = self
+			return
 		var target: CapnTarget = follow(0, 0)
 		if target.is_null or target.kind != CapnPointer.Kind.STRUCT:
-			return StructReader.empty(self)
-		return StructReader.from_target(self, target, limits.pointer_depth_limit)
+			out.msg = self
+			return
+		out.set_from_target(self, target, limits.pointer_depth_limit)
 
 	## Follow the pointer word at (seg_id, ptr_word_off). Resolves far pointers.
 	## Always returns a CapnTarget (never null); is_null=true on null/error.
@@ -170,6 +182,27 @@ class Message extends RefCounted:
 		had_error = true
 		push_error("CapnReader: %s" % message)
 
+	## Decode a text/data target straight off the CapnTarget, skipping the
+	## throwaway ListReader that to_text()/to_data() would otherwise need. Text
+	## and Data are always List(UInt8) — non-composite — so the byte span is
+	## (content_word, elem_count) directly. The COMPOSITE arm is unreachable on a
+	## well-formed message; it falls back to the reader path to stay faithful on
+	## malformed input. Safe with the RT4 scratch: the caller reads `t`'s fields
+	## here before the next follow() overwrites the scratch.
+	func text_from_target(t: CapnTarget) -> String:
+		if t.elem_size_code == CapnPointer.ElemSize.COMPOSITE:
+			return ListReader.from_target(self, t, 0).to_text()
+		return CapnTextData.text_from(
+			segments.segments[t.seg_id], t.content_word * WORD_BYTES, t.elem_count
+		)
+
+	func data_from_target(t: CapnTarget) -> PackedByteArray:
+		if t.elem_size_code == CapnPointer.ElemSize.COMPOSITE:
+			return ListReader.from_target(self, t, 0).to_data()
+		return CapnTextData.data_from(
+			segments.segments[t.seg_id], t.content_word * WORD_BYTES, t.elem_count
+		)
+
 
 # =========================================================================
 # StructReader — data + pointer section view (default-XOR primitives).
@@ -200,10 +233,9 @@ class StructReader extends RefCounted:
 		return b
 
 	static func from_target(msg: Message, t: CapnTarget, depth_remaining: int) -> StructReader:
-		return from_inline(
-			msg, t.seg_id, t.content_word * WORD_BYTES, t.data_words * WORD_BYTES,
-			t.content_word + t.data_words, t.ptr_words, depth_remaining
-		)
+		var r: StructReader = StructReader.new()
+		r.set_from_target(msg, t, depth_remaining)
+		return r
 
 	## Explicit byte/word offsets — used by ListReader for composite elements
 	## (word-aligned) and upgraded primitive elements (sub-word).
@@ -212,14 +244,31 @@ class StructReader extends RefCounted:
 		ptr_word: int, ptr_words: int, depth_remaining: int
 	) -> StructReader:
 		var r: StructReader = StructReader.new()
-		r.msg = msg
-		r.seg_id = seg_id
-		r.data_byte_off = data_byte_off
-		r.data_bytes = data_bytes
-		r.ptr_word = ptr_word
-		r.ptr_words = ptr_words
-		r.depth_remaining = depth_remaining
+		r.set_from_inline(
+			msg, seg_id, data_byte_off, data_bytes, ptr_word, ptr_words, depth_remaining
+		)
 		return r
+
+	## In-place population of an existing reader (or a generated Reader subclass)
+	## from a target. The fill_* path uses this so a typed Reader that extends
+	## StructReader is a single allocation instead of StructReader + a wrapper.
+	func set_from_target(p_msg: Message, t: CapnTarget, p_depth: int) -> void:
+		set_from_inline(
+			p_msg, t.seg_id, t.content_word * WORD_BYTES, t.data_words * WORD_BYTES,
+			t.content_word + t.data_words, t.ptr_words, p_depth
+		)
+
+	func set_from_inline(
+		p_msg: Message, p_seg_id: int, p_data_byte_off: int, p_data_bytes: int,
+		p_ptr_word: int, p_ptr_words: int, p_depth: int
+	) -> void:
+		msg = p_msg
+		seg_id = p_seg_id
+		data_byte_off = p_data_byte_off
+		data_bytes = p_data_bytes
+		ptr_word = p_ptr_word
+		ptr_words = p_ptr_words
+		depth_remaining = p_depth
 
 	## Zero-size reader: every primitive returns its default, every pointer null.
 	static func empty(msg: Message) -> StructReader:
@@ -301,10 +350,21 @@ class StructReader extends RefCounted:
 		return not _follow_ptr(ptr_index).is_null
 
 	func get_struct(ptr_index: int) -> StructReader:
+		var r: StructReader = StructReader.new()
+		fill_struct(ptr_index, r)
+		return r
+
+	## Populate `out` from the struct pointer at `ptr_index` (or leave it a zero-size
+	## reader on null/non-struct), instead of allocating. Generated typed Readers
+	## (which extend StructReader) pass a fresh `X.Reader.new()` here so the typed
+	## reader is the single allocation — no separate StructReader + wrapper. `out`
+	## must be freshly constructed (only `msg` is set on the empty path).
+	func fill_struct(ptr_index: int, out: StructReader) -> void:
 		var t: CapnTarget = _follow_ptr(ptr_index)
 		if t.is_null or t.kind != CapnPointer.Kind.STRUCT:
-			return StructReader.empty(msg)
-		return StructReader.from_target(msg, t, depth_remaining - 1)
+			out.msg = msg
+			return
+		out.set_from_target(msg, t, depth_remaining - 1)
 
 	func get_list(ptr_index: int) -> ListReader:
 		var t: CapnTarget = _follow_ptr(ptr_index)
@@ -440,28 +500,38 @@ class ListReader extends RefCounted:
 		return (_buf().decode_u8(byte_off) & (1 << bit_in_byte)) != 0
 
 	func get_struct(i: int) -> StructReader:
+		var r: StructReader = StructReader.new()
+		fill_struct(i, r)
+		return r
+
+	## Populate `out` from element `i` (composite or struct-upgraded primitive),
+	## instead of allocating. Generated list getters pass a fresh `X.Reader.new()`
+	## per element so the typed Reader is the single allocation, collapsing the old
+	## StructReader + wrapper double-alloc. `out` must be freshly constructed (only
+	## `msg` is set on the out-of-range / bit-list paths).
+	func fill_struct(i: int, out: StructReader) -> void:
 		if i < 0 or i >= count:
-			return StructReader.empty(msg)
+			out.msg = msg
+			return
 		if is_composite:
 			var base_word: int = first_elem_word + i * step_words
-			return StructReader.from_inline(
+			out.set_from_inline(
 				msg, seg_id, base_word * WORD_BYTES, comp_data_words * WORD_BYTES,
 				base_word + comp_data_words, comp_ptr_words, depth_remaining - 1
 			)
+			return
 		# Struct-upgrade (encoding.md :204-215).
 		if elem_size_code == CapnPointer.ElemSize.BIT:
 			msg.fail("cannot read a bit list as a struct list")
-			return StructReader.empty(msg)
+			out.msg = msg
+			return
 		if elem_size_code == CapnPointer.ElemSize.POINTER:
 			# One-pointer struct: data empty, single pointer at the element word.
-			return StructReader.from_inline(
-				msg, seg_id, 0, 0, first_elem_word + i, 1, depth_remaining - 1
-			)
+			out.set_from_inline(msg, seg_id, 0, 0, first_elem_word + i, 1, depth_remaining - 1)
+			return
 		# Void / byte / 2 / 4 / 8: project the element bytes as the data section.
 		var data_off: int = first_elem_word * WORD_BYTES + i * step_bytes
-		return StructReader.from_inline(
-			msg, seg_id, data_off, step_bytes, 0, 0, depth_remaining - 1
-		)
+		out.set_from_inline(msg, seg_id, data_off, step_bytes, 0, 0, depth_remaining - 1)
 
 	func get_list(i: int) -> ListReader:
 		var t: CapnTarget = _follow_elem(i)

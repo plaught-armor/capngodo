@@ -1,24 +1,22 @@
 class_name CapabilityCapnp extends RefCounted
 
-## GENERATED from capability.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/capability.capnp by capnpc-gdscript — do not edit.
 
 class Session extends RefCounted:
 	const DATA_WORDS: int = 1
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_id() -> int:
-			return _r.get_u32(0, 0)
+			return self.get_u32(0, 0)
 
 		func get_greeter() -> int:
-			return _r.get_cap_index(0)
+			return self.get_cap_index(0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -41,31 +39,28 @@ class Event extends RefCounted:
 	const PTR_WORDS: int = 1
 	enum Which { NONE, HANDLER, COUNT }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
-
 		func which() -> int:
-			return _r.get_u16(0, 0)
+			return self.get_u16(0, 0)
 
 		func is_none() -> bool:
-			return _r.get_u16(0, 0) == 0
+			return self.get_u16(0, 0) == 0
 
 		func is_handler() -> bool:
-			return _r.get_u16(0, 0) == 1
+			return self.get_u16(0, 0) == 1
 
 		func get_handler() -> int:
-			return _r.get_cap_index(0)
+			return self.get_cap_index(0)
 
 		func is_count() -> bool:
-			return _r.get_u16(0, 0) == 2
+			return self.get_u16(0, 0) == 2
 
 		func get_count() -> int:
-			return _r.get_u16(2, 0)
+			return self.get_u16(2, 0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -91,14 +86,18 @@ class Event extends RefCounted:
 
 static func read_session(bytes: PackedByteArray, packed: bool = false) -> Session.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Session.Reader.wrap(msg.get_root())
+	var r: Session.Reader = Session.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_session() -> Session.Builder:
 	return Session.Builder.wrap(CapnBuilder.new_message(Session.DATA_WORDS, Session.PTR_WORDS))
 
 static func read_event(bytes: PackedByteArray, packed: bool = false) -> Event.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Event.Reader.wrap(msg.get_root())
+	var r: Event.Reader = Event.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_event() -> Event.Builder:
 	return Event.Builder.wrap(CapnBuilder.new_message(Event.DATA_WORDS, Event.PTR_WORDS))

@@ -6,16 +6,14 @@ class Bag extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 1
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_rows() -> CapnReader.ListReader:
-			return _r.get_list(0)
+			return self.get_list(0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -34,7 +32,9 @@ class Bag extends RefCounted:
 
 static func read_bag(bytes: PackedByteArray, packed: bool = false) -> Bag.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Bag.Reader.wrap(msg.get_root())
+	var r: Bag.Reader = Bag.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_bag() -> Bag.Builder:
 	return Bag.Builder.wrap(CapnBuilder.new_message(Bag.DATA_WORDS, Bag.PTR_WORDS))

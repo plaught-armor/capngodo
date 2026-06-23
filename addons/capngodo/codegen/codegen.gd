@@ -214,7 +214,9 @@ static func _emit_umbrella(fname: String, file_node: CapnReader.StructReader, by
 			lines.append("")
 			lines.append("static func read_%s(bytes: PackedByteArray, packed: bool = false) -> %s.Reader:" % [sname, entry.flat])
 			lines.append(TAB + "var msg: CapnReader.Message = CapnReader.open(bytes, packed)")
-			lines.append(TAB + "return %s.Reader.wrap(msg.get_root())" % entry.flat)
+			lines.append(TAB + "var r: %s.Reader = %s.Reader.new()" % [entry.flat, entry.flat])
+			lines.append(TAB + "msg.fill_root(r)")
+			lines.append(TAB + "return r")
 			lines.append("")
 			lines.append("static func new_%s() -> %s.Builder:" % [sname, entry.flat])
 			lines.append(TAB + "return %s.Builder.wrap(CapnBuilder.new_message(%s.DATA_WORDS, %s.PTR_WORDS))" % [entry.flat, entry.flat, entry.flat])
@@ -327,18 +329,24 @@ static func _emit_struct(lines: PackedStringArray, entry: CodegenEntry, flat_by_
 	_emit_field_union_enums(lines, "", fields, by_id)
 	lines.append("")
 
-	# Reader.
-	lines.append(TAB + "class Reader extends RefCounted:")
-	lines.append(TAB + TAB + "var _r: CapnReader.StructReader")
-	lines.append("")
+	# Reader. Extends StructReader directly (not a `_r`-wrapping RefCounted): the
+	# typed Reader IS the struct view, so reading a nested struct / list element
+	# fills a fresh Reader in place (CapnReader.fill_*) instead of allocating a
+	# StructReader and then a wrapper around it — one allocation per reader, not two.
+	lines.append(TAB + "class Reader extends CapnReader.StructReader:")
+	# wrap(): adopt an existing StructReader as this typed Reader (one extra copy).
+	# Public/back-compat constructor; the hot path uses fill_* (no extra reader).
+	# Also guarantees the class body is non-empty for a field-less struct.
 	lines.append(TAB + TAB + "static func wrap(r: CapnReader.StructReader) -> Reader:")
 	lines.append(TAB + TAB + TAB + "var o: Reader = Reader.new()")
-	lines.append(TAB + TAB + TAB + "o._r = r")
+	lines.append(
+		TAB + TAB + TAB
+		+ "o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)"
+	)
 	lines.append(TAB + TAB + TAB + "return o")
 	if struct_disc >= 0:
-		lines.append("")
 		lines.append(TAB + TAB + "func which() -> int:")
-		lines.append(TAB + TAB + TAB + "return _r.get_u16(%d, 0)" % struct_disc)
+		lines.append(TAB + TAB + TAB + "return self.get_u16(%d, 0)" % struct_disc)
 	for i: int in fields.size():
 		var gf: CapnReader.StructReader = fields.get_struct(i)
 		var ov: CapnReader.StructReader = _param_override(gf, subst, subst_scope)
@@ -454,7 +462,7 @@ static func _emit_field_getter(lines: PackedStringArray, f: CapnReader.StructRea
 static func _emit_is_arm(lines: PackedStringArray, fname: String, struct_disc: int, disc_val: int) -> void:
 	lines.append("")
 	lines.append(TAB + TAB + "func is_%s() -> bool:" % fname)
-	lines.append(TAB + TAB + TAB + "return _r.get_u16(%d, 0) == %d" % [struct_disc, disc_val])
+	lines.append(TAB + TAB + TAB + "return self.get_u16(%d, 0) == %d" % [struct_disc, disc_val])
 
 
 ## Emit a get_<suffix>() reader for a slot field. Void fields produce nothing.
@@ -470,11 +478,20 @@ static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnR
 	var tw: CapnSchema.TypeWhich = CapnSchema.type_which(t)
 	if tw == CapnSchema.TypeWhich.VOID:
 		return
-	if tw == CapnSchema.TypeWhich.STRUCT and not flat_override.is_empty():
-		lines.append("")
-		lines.append(TAB + TAB + "func get_%s() -> %s.Reader:" % [suffix, flat_override])
-		lines.append(TAB + TAB + TAB + "return %s.Reader.wrap(_r.get_struct(%d))" % [flat_override, off])
-		return
+	# A struct field's Reader extends StructReader, so fill a fresh typed Reader in
+	# place rather than wrapping a separate StructReader — one allocation. flat is
+	# the override (generic param slot) when set, else the resolved field type; an
+	# unresolved cross-file struct (empty flat) falls through to the scalar path,
+	# which emits the `null # TODO` placeholder.
+	if tw == CapnSchema.TypeWhich.STRUCT:
+		var sflat: String = flat_override if not flat_override.is_empty() else _struct_flat(t, flat_by_id)
+		if not sflat.is_empty():
+			lines.append("")
+			lines.append(TAB + TAB + "func get_%s() -> %s.Reader:" % [suffix, sflat])
+			lines.append(TAB + TAB + TAB + "var r: %s.Reader = %s.Reader.new()" % [sflat, sflat])
+			lines.append(TAB + TAB + TAB + "self.fill_struct(%d, r)" % off)
+			lines.append(TAB + TAB + TAB + "return r")
+			return
 	if tw == CapnSchema.TypeWhich.LIST:
 		_emit_list_getter(lines, suffix, off, CapnSchema.type_list_element(t), flat_by_id)
 		return
@@ -486,7 +503,7 @@ static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnR
 		return
 	lines.append("")
 	lines.append(TAB + TAB + "func get_%s() -> %s:" % [suffix, _return_type(tw, t, flat_by_id)])
-	lines.append(TAB + TAB + TAB + "return %s" % _scalar_expr("_r", tw, t, off, flat_by_id, _default_for(f, tw)))
+	lines.append(TAB + TAB + TAB + "return %s" % _scalar_expr("self", tw, t, off, flat_by_id, _default_for(f, tw)))
 
 
 ## Type-erased reader accessors for an AnyPointer / generic-parameter slot.
@@ -496,19 +513,19 @@ static func _emit_slot_getter(lines: PackedStringArray, suffix: String, f: CapnR
 static func _emit_anyptr_getter(lines: PackedStringArray, suffix: String, off: int) -> void:
 	lines.append("")
 	lines.append(TAB + TAB + "func has_%s() -> bool:" % suffix)
-	lines.append(TAB + TAB + TAB + "return _r.has_ptr(%d)" % off)
+	lines.append(TAB + TAB + TAB + "return self.has_ptr(%d)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func get_%s_struct() -> CapnReader.StructReader:" % suffix)
-	lines.append(TAB + TAB + TAB + "return _r.get_struct(%d)" % off)
+	lines.append(TAB + TAB + TAB + "return self.get_struct(%d)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func get_%s_list() -> CapnReader.ListReader:" % suffix)
-	lines.append(TAB + TAB + TAB + "return _r.get_list(%d)" % off)
+	lines.append(TAB + TAB + TAB + "return self.get_list(%d)" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func get_%s_text() -> String:" % suffix)
-	lines.append(TAB + TAB + TAB + "return _r.get_text(%d, \"\")" % off)
+	lines.append(TAB + TAB + TAB + "return self.get_text(%d, \"\")" % off)
 	lines.append("")
 	lines.append(TAB + TAB + "func get_%s_data() -> PackedByteArray:" % suffix)
-	lines.append(TAB + TAB + TAB + "return _r.get_data(%d)" % off)
+	lines.append(TAB + TAB + TAB + "return self.get_data(%d)" % off)
 
 
 ## Union (group) reader: <group>_which() + per-member is_/get_ accessors.
@@ -521,14 +538,14 @@ static func _emit_union_getters(lines: PackedStringArray, gsnake: String, gnode:
 	var disc: int = _disc_byte(gnode)
 	lines.append("")
 	lines.append(TAB + TAB + "func %s_which() -> int:" % gsnake)
-	lines.append(TAB + TAB + TAB + "return _r.get_u16(%d, 0)" % disc)
+	lines.append(TAB + TAB + TAB + "return self.get_u16(%d, 0)" % disc)
 	var members: CapnReader.ListReader = CapnSchema.node_struct_fields(gnode)
 	for i: int in members.size():
 		var m: CapnReader.StructReader = members.get_struct(i)
 		var mfull: String = "%s_%s" % [gsnake, _safe_member(_snake(CapnSchema.field_name(m)))]
 		lines.append("")
 		lines.append(TAB + TAB + "func is_%s() -> bool:" % mfull)
-		lines.append(TAB + TAB + TAB + "return _r.get_u16(%d, 0) == %d" % [disc, CapnSchema.field_discriminant_value(m)])
+		lines.append(TAB + TAB + TAB + "return self.get_u16(%d, 0) == %d" % [disc, CapnSchema.field_discriminant_value(m)])
 		if CapnSchema.field_which(m) == CapnSchema.FieldWhich.SLOT:
 			_emit_slot_getter(lines, mfull, m, flat_by_id, _param_override(m, subst, subst_scope))
 			continue
@@ -581,7 +598,7 @@ static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int,
 		# List(AnyList) — a literal List(AnyPointer) is rejected by the compiler.
 		lines.append("")
 		lines.append(TAB + TAB + "func get_%s() -> CapnReader.ListReader:" % fname)
-		lines.append(TAB + TAB + TAB + "return _r.get_list(%d)" % off)
+		lines.append(TAB + TAB + TAB + "return self.get_list(%d)" % off)
 		return
 	# Type the returned container by element kind for autocomplete at the call
 	# site. Indexed writes into a typed Array carry the element type directly —
@@ -589,11 +606,19 @@ static func _emit_list_getter(lines: PackedStringArray, fname: String, off: int,
 	var arr: String = _list_container_type(ew, elem, flat_by_id)
 	lines.append("")
 	lines.append(TAB + TAB + "func get_%s() -> %s:" % [fname, arr])
-	lines.append(TAB + TAB + TAB + "var lr: CapnReader.ListReader = _r.get_list(%d)" % off)
+	lines.append(TAB + TAB + TAB + "var lr: CapnReader.ListReader = self.get_list(%d)" % off)
 	lines.append(TAB + TAB + TAB + "var out: %s = []" % arr)
 	lines.append(TAB + TAB + TAB + "out.resize(lr.size())")
 	lines.append(TAB + TAB + TAB + "for i: int in lr.size():")
-	lines.append(TAB + TAB + TAB + TAB + "out[i] = %s" % _list_elem_expr(ew, elem, flat_by_id))
+	# Struct elements fill a fresh typed Reader in place (the Reader IS the struct
+	# view) — one allocation per element, not a StructReader plus a wrapper.
+	var struct_flat: String = _struct_flat(elem, flat_by_id) if ew == CapnSchema.TypeWhich.STRUCT else ""
+	if not struct_flat.is_empty():
+		lines.append(TAB + TAB + TAB + TAB + "var r: %s.Reader = %s.Reader.new()" % [struct_flat, struct_flat])
+		lines.append(TAB + TAB + TAB + TAB + "lr.fill_struct(i, r)")
+		lines.append(TAB + TAB + TAB + TAB + "out[i] = r")
+	else:
+		lines.append(TAB + TAB + TAB + TAB + "out[i] = %s" % _list_elem_expr(ew, elem, flat_by_id))
 	lines.append(TAB + TAB + TAB + "return out")
 
 
@@ -971,6 +996,13 @@ static var _RESERVED_MEMBERS: Dictionary[String, bool] = {
 	"signal_list": true,
 	"incoming_connections": true,
 	"indexed": true,
+	# NOTE: Reader now extends CapnReader.StructReader (wrapper-collapse). A
+	# *top-level* field whose stem exactly matches an inherited reader method
+	# (`struct`, `text`, `list`, `data`, `u32`, ...) would emit get_<stem> shadowing
+	# it with a different signature — a loud parse error in the generated file, not
+	# silent breakage. We do NOT sanitize those here: the names are only a hazard at
+	# the unprefixed top level, and blanket-reserving them would wrongly mangle
+	# group leaves (e.g. a `chat.text` group field -> set_body_chat_text, no clash).
 }
 
 

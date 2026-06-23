@@ -1,6 +1,6 @@
 class_name NestedUnionCapnp extends RefCounted
 
-## GENERATED from nested_union.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/nested_union.capnp by capnpc-gdscript — do not edit.
 
 class Msg extends RefCounted:
 	const DATA_WORDS: int = 2
@@ -8,49 +8,46 @@ class Msg extends RefCounted:
 	enum Which { NONE, PAYLOAD, COUNT }
 	enum Payload { TEXT, NUM, RESET }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
-
 		func which() -> int:
-			return _r.get_u16(4, 0)
+			return self.get_u16(4, 0)
 
 		func get_id() -> int:
-			return _r.get_u32(0, 0)
+			return self.get_u32(0, 0)
 
 		func is_none() -> bool:
-			return _r.get_u16(4, 0) == 0
+			return self.get_u16(4, 0) == 0
 
 		func is_payload() -> bool:
-			return _r.get_u16(4, 0) == 1
+			return self.get_u16(4, 0) == 1
 
 		func payload_which() -> int:
-			return _r.get_u16(6, 0)
+			return self.get_u16(6, 0)
 
 		func is_payload_text() -> bool:
-			return _r.get_u16(6, 0) == 0
+			return self.get_u16(6, 0) == 0
 
 		func get_payload_text() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func is_payload_num() -> bool:
-			return _r.get_u16(6, 0) == 1
+			return self.get_u16(6, 0) == 1
 
 		func get_payload_num() -> int:
-			return _r.get_i32(8, 0)
+			return self.get_i32(8, 0)
 
 		func is_payload_reset() -> bool:
-			return _r.get_u16(6, 0) == 2
+			return self.get_u16(6, 0) == 2
 
 		func is_count() -> bool:
-			return _r.get_u16(4, 0) == 2
+			return self.get_u16(4, 0) == 2
 
 		func get_count() -> int:
-			return _r.get_u16(6, 0)
+			return self.get_u16(6, 0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -90,7 +87,9 @@ class Msg extends RefCounted:
 
 static func read_msg(bytes: PackedByteArray, packed: bool = false) -> Msg.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Msg.Reader.wrap(msg.get_root())
+	var r: Msg.Reader = Msg.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_msg() -> Msg.Builder:
 	return Msg.Builder.wrap(CapnBuilder.new_message(Msg.DATA_WORDS, Msg.PTR_WORDS))

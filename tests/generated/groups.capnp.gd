@@ -1,55 +1,53 @@
 class_name GroupsCapnp extends RefCounted
 
-## GENERATED from groups.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/groups.capnp by capnpc-gdscript — do not edit.
 
 class Entity extends RefCounted:
 	const DATA_WORDS: int = 4
 	const PTR_WORDS: int = 2
 	enum StateMode { IDLE, MOVING }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_name() -> String:
-			return _r.get_text(0, "")
+			return self.get_text(0, "")
 
 		func get_transform_pos_x() -> float:
-			return _r.get_f32(0, 0)
+			return self.get_f32(0, 0)
 
 		func get_transform_pos_y() -> float:
-			return _r.get_f32(4, 0)
+			return self.get_f32(4, 0)
 
 		func get_physics_mass() -> float:
-			return _r.get_f32(8, 0)
+			return self.get_f32(8, 0)
 
 		func get_physics_velocity_dx() -> float:
-			return _r.get_f32(12, 0)
+			return self.get_f32(12, 0)
 
 		func get_physics_velocity_dy() -> float:
-			return _r.get_f32(16, 0)
+			return self.get_f32(16, 0)
 
 		func get_physics_label() -> String:
-			return _r.get_text(1, "")
+			return self.get_text(1, "")
 
 		func get_state_hp() -> int:
-			return _r.get_i32(20, 0)
+			return self.get_i32(20, 0)
 
 		func state_mode_which() -> int:
-			return _r.get_u16(24, 0)
+			return self.get_u16(24, 0)
 
 		func is_state_mode_idle() -> bool:
-			return _r.get_u16(24, 0) == 0
+			return self.get_u16(24, 0) == 0
 
 		func is_state_mode_moving() -> bool:
-			return _r.get_u16(24, 0) == 1
+			return self.get_u16(24, 0) == 1
 
 		func get_state_mode_moving() -> float:
-			return _r.get_f32(28, 0)
+			return self.get_f32(28, 0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -98,28 +96,25 @@ class Outer extends RefCounted:
 	const PTR_WORDS: int = 0
 	enum Which { EMPTY, BOX }
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
-
 		func which() -> int:
-			return _r.get_u16(0, 0)
+			return self.get_u16(0, 0)
 
 		func is_empty() -> bool:
-			return _r.get_u16(0, 0) == 0
+			return self.get_u16(0, 0) == 0
 
 		func is_box() -> bool:
-			return _r.get_u16(0, 0) == 1
+			return self.get_u16(0, 0) == 1
 
 		func get_box_w() -> int:
-			return _r.get_i32(4, 0)
+			return self.get_i32(4, 0)
 
 		func get_box_h() -> int:
-			return _r.get_i32(8, 0)
+			return self.get_i32(8, 0)
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -146,14 +141,18 @@ class Outer extends RefCounted:
 
 static func read_entity(bytes: PackedByteArray, packed: bool = false) -> Entity.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Entity.Reader.wrap(msg.get_root())
+	var r: Entity.Reader = Entity.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_entity() -> Entity.Builder:
 	return Entity.Builder.wrap(CapnBuilder.new_message(Entity.DATA_WORDS, Entity.PTR_WORDS))
 
 static func read_outer(bytes: PackedByteArray, packed: bool = false) -> Outer.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Outer.Reader.wrap(msg.get_root())
+	var r: Outer.Reader = Outer.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_outer() -> Outer.Builder:
 	return Outer.Builder.wrap(CapnBuilder.new_message(Outer.DATA_WORDS, Outer.PTR_WORDS))

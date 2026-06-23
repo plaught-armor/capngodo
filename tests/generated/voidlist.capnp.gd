@@ -1,21 +1,19 @@
 class_name VoidlistCapnp extends RefCounted
 
-## GENERATED from voidlist.capnp by capnpc-gdscript — do not edit.
+## GENERATED from tests/golden/voidlist.capnp by capnpc-gdscript — do not edit.
 
 class Pings extends RefCounted:
 	const DATA_WORDS: int = 0
 	const PTR_WORDS: int = 2
 
-	class Reader extends RefCounted:
-		var _r: CapnReader.StructReader
-
+	class Reader extends CapnReader.StructReader:
 		static func wrap(r: CapnReader.StructReader) -> Reader:
 			var o: Reader = Reader.new()
-			o._r = r
+			o.set_from_inline(r.msg, r.seg_id, r.data_byte_off, r.data_bytes, r.ptr_word, r.ptr_words, r.depth_remaining)
 			return o
 
 		func get_voids() -> Array:
-			var lr: CapnReader.ListReader = _r.get_list(0)
+			var lr: CapnReader.ListReader = self.get_list(0)
 			var out: Array = []
 			out.resize(lr.size())
 			for i: int in lr.size():
@@ -23,7 +21,7 @@ class Pings extends RefCounted:
 			return out
 
 		func get_label() -> String:
-			return _r.get_text(1, "")
+			return self.get_text(1, "")
 
 	class Builder extends RefCounted:
 		var _b: CapnBuilder.StructBuilder
@@ -45,7 +43,9 @@ class Pings extends RefCounted:
 
 static func read_pings(bytes: PackedByteArray, packed: bool = false) -> Pings.Reader:
 	var msg: CapnReader.Message = CapnReader.open(bytes, packed)
-	return Pings.Reader.wrap(msg.get_root())
+	var r: Pings.Reader = Pings.Reader.new()
+	msg.fill_root(r)
+	return r
 
 static func new_pings() -> Pings.Builder:
 	return Pings.Builder.wrap(CapnBuilder.new_message(Pings.DATA_WORDS, Pings.PTR_WORDS))
