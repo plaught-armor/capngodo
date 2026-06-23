@@ -1,5 +1,4 @@
 extends GutTest
-
 ## CG1d — a generic parameter slot nested inside a *group* of the generic body.
 ## The CG1b/CG1c monomorphizer resolved only top-level param slots; a param inside
 ## a named group or a union group of the generic body emitted erased AnyPointer
@@ -9,11 +8,10 @@ extends GutTest
 ##   Tagged(Text) -> get_body_item()   -> String           (union-group param arm)
 ## Uses the generated GenericGroupCapnp.
 
-
 func test_named_group_param_resolves_to_concrete_type() -> void:
 	var u: GenericGroupCapnp.Use.Builder = GenericGroupCapnp.new_use()
 	var box: GenericGroupCapnp.Box_Text.Builder = u.init_box_text()
-	box.set_holder_value("payload")   # typed String setter (was erased AnyPointer)
+	box.set_holder_value("payload") # typed String setter (was erased AnyPointer)
 	box.set_holder_label("tag")
 
 	var r: GenericGroupCapnp.Use.Reader = GenericGroupCapnp.read_use(u.to_bytes())
@@ -27,7 +25,7 @@ func test_named_group_param_resolves_to_concrete_type() -> void:
 func test_union_group_param_arm_resolves_to_concrete_type() -> void:
 	var u: GenericGroupCapnp.Use.Builder = GenericGroupCapnp.new_use()
 	var tag: GenericGroupCapnp.Tagged_Text.Builder = u.init_tagged_text()
-	tag.set_body_item("chosen")       # union param arm, typed String setter
+	tag.set_body_item("chosen") # union param arm, typed String setter
 
 	var r: GenericGroupCapnp.Use.Reader = GenericGroupCapnp.read_use(u.to_bytes())
 	var rtag: GenericGroupCapnp.Tagged_Text.Reader = r.get_tagged_text()

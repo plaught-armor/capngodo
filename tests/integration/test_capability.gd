@@ -1,9 +1,7 @@
 extends GutTest
-
 ## Interface (capability) field types (CG6): a capability field decodes to its
 ## cap-table index (-1 when absent); there is no RPC layer and no setter. Uses
 ## the generated CapabilityCapnp (from tests/golden/capability.capnp).
-
 
 func test_capability_field_absent_reads_minus_one() -> void:
 	# Our builder writes no capability (serialization only), so the cap pointer

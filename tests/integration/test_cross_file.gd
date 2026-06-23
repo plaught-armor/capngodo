@@ -1,10 +1,8 @@
 extends GutTest
-
 ## Cross-file type references (CG7): a field of an imported type resolves to the
 ## imported file's generated umbrella class. ShapesCapnp.Line.start is a
 ## Common.Point -> CommonCapnp.Point. Uses the generated ShapesCapnp +
 ## CommonCapnp (from tests/golden/shapes.capnp + common.capnp).
-
 
 func test_imported_struct_field_round_trips() -> void:
 	var line: ShapesCapnp.Line.Builder = ShapesCapnp.new_line()

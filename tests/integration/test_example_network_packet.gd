@@ -1,9 +1,7 @@
 extends GutTest
-
 ## Smoke test for the network_packet example (examples/network_packet): each
 ## packet kind encodes to packed bytes and decodes back to its original values,
 ## dispatched on the struct-level union discriminant.
-
 
 func test_chat_round_trips() -> void:
 	var wire: PackedByteArray = NetworkPacketDemo.encode_chat(1, 42, "gg wp")
@@ -16,7 +14,10 @@ func test_chat_round_trips() -> void:
 
 func test_move_round_trips() -> void:
 	var wire: PackedByteArray = NetworkPacketDemo.encode_move(
-		2, 42, Vector2(12.5, -3.0), Vector2(1.0, 0.0)
+		2,
+		42,
+		Vector2(12.5, -3.0),
+		Vector2(1.0, 0.0),
 	)
 	var d: Dictionary[String, Variant] = NetworkPacketDemo.decode(wire)
 	assert_eq(d["kind"], "move")

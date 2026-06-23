@@ -1,16 +1,14 @@
 extends GutTest
-
 ## Acronym name handling (CQ3): _snake splits at the end of a capital run that
 ## starts a new word, so accessor names read naturally. Type names keep their
 ## original case (HTTPServer). Uses the generated AcronymsCapnp (from
 ## tests/golden/acronyms.capnp).
 
-
 func test_acronym_field_accessors_round_trip() -> void:
 	var s: AcronymsCapnp.HTTPServer.Builder = AcronymsCapnp.new_http_server()
-	s.set_parse_http_request(true)        # parseHTTPRequest -> parse_http_request
-	s.set_server_id(42)                   # serverID -> server_id
-	s.set_url_field("http://example")     # urlField -> url_field
+	s.set_parse_http_request(true) # parseHTTPRequest -> parse_http_request
+	s.set_server_id(42) # serverID -> server_id
+	s.set_url_field("http://example") # urlField -> url_field
 
 	var r: AcronymsCapnp.HTTPServer.Reader = AcronymsCapnp.read_http_server(s.to_bytes())
 	assert_true(r.get_parse_http_request(), "acronym-in-middle field")

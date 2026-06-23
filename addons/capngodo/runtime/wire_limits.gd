@@ -1,5 +1,5 @@
-class_name CapnLimits extends RefCounted
-
+class_name CapnLimits
+extends RefCounted
 ## Security limits applied while traversing an untrusted message.
 ##
 ## encoding.md §"Security" (:392-427): a reader MUST bound total bytes visited

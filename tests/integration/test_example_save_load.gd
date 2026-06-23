@@ -1,5 +1,4 @@
 extends GutTest
-
 ## Smoke test for the save/load example (examples/save_load): a plain Dictionary
 ## round-trips through the generated GameStateCapnp via SaveLoadDemo's static
 ## save/load — proving the example (and a real save-game use case) works.
@@ -20,8 +19,8 @@ func test_save_then_load_round_trips() -> void:
 		"pos_x": 12.5,
 		"pos_y": -3.25,
 		"inventory": [
-			{"name": "sword", "count": 1},
-			{"name": "potion", "count": 5},
+			{ "name": "sword", "count": 1 },
+			{ "name": "potion", "count": 5 },
 		],
 	}
 	assert_eq(SaveLoadDemo.save_game(SAVE_PATH, state), OK, "save succeeds")
@@ -41,4 +40,4 @@ func test_save_then_load_round_trips() -> void:
 
 
 func test_load_missing_file_returns_empty() -> void:
-	assert_eq(SaveLoadDemo.load_game("user://does_not_exist.capnp"), {})
+	assert_eq(SaveLoadDemo.load_game("user://does_not_exist.capnp"), { })

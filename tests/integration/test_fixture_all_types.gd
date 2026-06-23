@@ -1,5 +1,4 @@
 extends GutTest
-
 ## End-to-end reader test against the canonical TestAllTypes message, encoded
 ## four ways by the real capnp toolchain. The same logical message appears as:
 ##   binary           — framed, single segment
@@ -79,8 +78,8 @@ func test_segmented_fixture_far_pointers() -> void:
 		assert_eq(msg.segments.segment_count(), 125, "125 segments")
 		_assert_all_types(msg.get_root())
 
-
 # --- shared assertions ---------------------------------------------------
+
 
 func _assert_all_types(r: CapnReader.StructReader) -> void:
 	# Primitives (default 0 -> XOR no-op).

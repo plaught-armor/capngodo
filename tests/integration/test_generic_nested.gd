@@ -1,5 +1,4 @@
 extends GutTest
-
 ## CG1c — nested-generic monomorphization. Box(Box(Text)) emits a typed outer
 ## (Box_Box_Text) whose value resolves to the typed inner (Box_Text), itself with
 ## get_value() -> String. The collector recurses into brand bindings so the inner
@@ -8,12 +7,11 @@ extends GutTest
 ##   Box(T) { value @0 :T }
 ##   Holder { bb :Box(Box(Text)); bbc :Box(Box(Cell)) }   Cell { v @0 :Int32 }
 
-
 func test_nested_text_two_levels_round_trip() -> void:
 	var h: GenericNestedCapnp.Holder.Builder = GenericNestedCapnp.new_holder()
 	var outer: GenericNestedCapnp.Box_Box_Text.Builder = h.init_bb()
 	var inner: GenericNestedCapnp.Box_Text.Builder = outer.init_value()
-	inner.set_value("deep")             # typed String at the innermost level
+	inner.set_value("deep") # typed String at the innermost level
 
 	var r: GenericNestedCapnp.Holder.Reader = GenericNestedCapnp.read_holder(h.to_bytes())
 	var rb: GenericNestedCapnp.Box_Box_Text.Reader = r.get_bb()

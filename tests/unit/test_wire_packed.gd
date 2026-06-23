@@ -1,8 +1,6 @@
 extends GutTest
-
 ## CapnPacked — the three hand-verifiable examples from encoding.md plus
 ## round-trip identity against the real capnp packed fixtures.
-
 
 func _hex(s: String) -> PackedByteArray:
 	return PackedByteArray(s.hex_decode())

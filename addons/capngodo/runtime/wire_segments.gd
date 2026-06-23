@@ -1,5 +1,5 @@
-class_name CapnSegments extends RefCounted
-
+class_name CapnSegments
+extends RefCounted
 ## A message's segments: a list of word-aligned byte blobs (encoding.md :17-26).
 ##
 ## Segment 0 word 0 is always the root pointer. Cross-segment references resolve

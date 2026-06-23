@@ -1,5 +1,4 @@
 extends GutTest
-
 ## Generics. Two layers over the generated GenericCapnp (tests/golden/generic.capnp):
 ##   Box(T) { value @0 :T; label @1 :Text; }
 ##   Container { boxedText :Box(Text); boxedStruct :Box(Inner);
@@ -16,12 +15,11 @@ extends GutTest
 ## get_value()->Inner.Reader, Box(List(Int32)) -> Box_List_Int32 with
 ## get_value()->Array[int]. Container's branded fields return the mono types.
 
-
 # --- CG1a: erased floor (top-level Box) ----------------------------------
 
 func test_erased_box_text_round_trips() -> void:
 	var b: GenericCapnp.Box.Builder = GenericCapnp.new_box()
-	b.set_value_text("hello")          # T erased -> text setter
+	b.set_value_text("hello") # T erased -> text setter
 	b.set_label("greeting")
 
 	var r: GenericCapnp.Box.Reader = GenericCapnp.read_box(b.to_bytes())
@@ -33,7 +31,7 @@ func test_erased_box_text_round_trips() -> void:
 func test_erased_box_struct_round_trips() -> void:
 	var b: GenericCapnp.Box.Builder = GenericCapnp.new_box()
 	var inner: GenericCapnp.Inner.Builder = GenericCapnp.Inner.Builder.wrap(
-		b.init_value_struct(GenericCapnp.Inner.DATA_WORDS, GenericCapnp.Inner.PTR_WORDS)
+		b.init_value_struct(GenericCapnp.Inner.DATA_WORDS, GenericCapnp.Inner.PTR_WORDS),
 	)
 	inner.set_n(99)
 
@@ -54,13 +52,13 @@ func test_erased_box_list_round_trips() -> void:
 	assert_eq(lr.size(), 3, "list length")
 	assert_eq(lr.get_i32(2), 30, "elem 2")
 
-
 # --- CG1b: monomorphic typed instantiations (via Container) ---------------
+
 
 func test_mono_box_text_round_trips() -> void:
 	var c: GenericCapnp.Container_.Builder = GenericCapnp.new_container_()
 	var bt: GenericCapnp.Box_Text.Builder = c.init_boxed_text()
-	bt.set_value("hello")               # typed String setter, not erased
+	bt.set_value("hello") # typed String setter, not erased
 	bt.set_label("greeting")
 
 	var r: GenericCapnp.Container_.Reader = GenericCapnp.read_container_(c.to_bytes())
@@ -72,7 +70,7 @@ func test_mono_box_text_round_trips() -> void:
 func test_mono_box_struct_round_trips() -> void:
 	var c: GenericCapnp.Container_.Builder = GenericCapnp.new_container_()
 	var bs: GenericCapnp.Box_Inner.Builder = c.init_boxed_struct()
-	bs.init_value().set_n(99)           # typed Inner.Builder, no raw data/ptr words
+	bs.init_value().set_n(99) # typed Inner.Builder, no raw data/ptr words
 	bs.set_label("struct-box")
 
 	var r: GenericCapnp.Container_.Reader = GenericCapnp.read_container_(c.to_bytes())
@@ -96,8 +94,8 @@ func test_mono_box_text_unset_reads_empty() -> void:
 	var r: GenericCapnp.Container_.Reader = GenericCapnp.read_container_(c.to_bytes())
 	assert_eq(r.get_boxed_text().get_value(), "", "absent typed param reads empty")
 
-
 # --- AnyPointer (explicit, unconstrained) — stays erased ------------------
+
 
 func test_explicit_anypointer_data_round_trips() -> void:
 	var c: GenericCapnp.Container_.Builder = GenericCapnp.new_container_()

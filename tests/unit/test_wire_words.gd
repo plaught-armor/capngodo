@@ -1,7 +1,5 @@
 extends GutTest
-
 ## CapnWireWords — little-endian primitives, bit ops, XOR masking.
-
 
 func test_u32_roundtrip() -> void:
 	var buf: PackedByteArray = PackedByteArray()

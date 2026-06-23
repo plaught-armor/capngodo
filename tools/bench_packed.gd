@@ -1,5 +1,4 @@
 extends SceneTree
-
 ## Headless benchmark for the bulk primitive-list decode (the Packed*Array path).
 ##
 ## Run:

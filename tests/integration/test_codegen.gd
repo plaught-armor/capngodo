@@ -1,5 +1,4 @@
 extends GutTest
-
 ## M5 codegen: end-to-end (generated reader decodes a real capnp-encoded
 ## addressbook message), golden (generator output matches the committed file),
 ## and compile-check (every generated source parses).
@@ -7,7 +6,6 @@ extends GutTest
 ## Fixtures: addressbook.cgr.bin (compiler output), addressbook_msg.bin (a real
 ## AddressBook value encoded by `capnp encode`). The committed generated reader
 ## lives at tests/generated/addressbook.capnp.gd (class_name AddressbookCapnp).
-
 
 func _read_bytes(path: String) -> PackedByteArray:
 	var f: FileAccess = FileAccess.open(path, FileAccess.READ)

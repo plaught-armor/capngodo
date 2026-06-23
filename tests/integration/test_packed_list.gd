@@ -1,10 +1,8 @@
 extends GutTest
-
 ## Bulk primitive-list codec: ListBuilder.set_<kind>_array writes the wire, and
 ## ListReader.to_<kind>_array reads it back in one slice + reinterpret. Exercised
 ## at the runtime layer (a struct with one primitive list at ptr 0) so every
 ## fixed-width packed type is covered, not just the Int32 the goldens reach.
-
 
 func _read_list(bb: CapnBuilder.StructBuilder) -> CapnReader.ListReader:
 	# bb is the root builder; serialize and re-open to read the list at ptr 0.

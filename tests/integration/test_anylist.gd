@@ -1,5 +1,4 @@
 extends GutTest
-
 ## CG10b — List(AnyPointer). capnp admits an erased pointer-element list only via
 ## List(AnyList) (a literal List(AnyPointer) or List(T) of a generic parameter is
 ## compiler-rejected). The element type is erased, so the generated reader returns
@@ -8,7 +7,6 @@ extends GutTest
 ## per-element accessors. Here the outer list holds two *different* inner-list
 ## kinds (an Int32 list and a Text list) to exercise the erased element flexibility.
 ## Uses the generated AnylistCapnp.
-
 
 func test_anylist_heterogeneous_inner_lists_round_trip() -> void:
 	var bag: AnylistCapnp.Bag.Builder = AnylistCapnp.new_bag()

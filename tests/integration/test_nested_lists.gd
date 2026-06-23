@@ -1,12 +1,10 @@
 extends GutTest
-
 ## CG10 — nested + pointer-element lists. A List(List(T)) outer is a pointer list
 ## whose elements point to inner lists. The reader exposes each element as a lazy
 ## CapnReader.ListReader (read inner elements with typed getters); the builder
 ## hands back the outer ListBuilder so the caller fills inner lists via
 ## init_list_at / init_composite_list_at. List(interface) decodes to cap-table
 ## indices (serialization-only — no setter). Uses the generated NestedListsCapnp.
-
 
 func test_nested_primitive_list_round_trips() -> void:
 	var nb: NestedListsCapnp.Nested.Builder = NestedListsCapnp.new_nested()
@@ -50,11 +48,17 @@ func test_nested_struct_list_round_trips() -> void:
 	var nb: NestedListsCapnp.Nested.Builder = NestedListsCapnp.new_nested()
 	var cells: CapnBuilder.ListBuilder = nb.init_cells(2)
 	var c0: CapnBuilder.ListBuilder = cells.init_composite_list_at(
-		0, 1, NestedListsCapnp.Cell.DATA_WORDS, NestedListsCapnp.Cell.PTR_WORDS
+		0,
+		1,
+		NestedListsCapnp.Cell.DATA_WORDS,
+		NestedListsCapnp.Cell.PTR_WORDS,
 	)
 	NestedListsCapnp.Cell.Builder.wrap(c0.init_struct(0)).set_v(10)
 	var c1: CapnBuilder.ListBuilder = cells.init_composite_list_at(
-		1, 2, NestedListsCapnp.Cell.DATA_WORDS, NestedListsCapnp.Cell.PTR_WORDS
+		1,
+		2,
+		NestedListsCapnp.Cell.DATA_WORDS,
+		NestedListsCapnp.Cell.PTR_WORDS,
 	)
 	NestedListsCapnp.Cell.Builder.wrap(c1.init_struct(0)).set_v(20)
 	NestedListsCapnp.Cell.Builder.wrap(c1.init_struct(1)).set_v(30)

@@ -1,5 +1,4 @@
 extends GutTest
-
 ## CapnTool: the in-process codegen path (resolve capnp -> `capnp compile -o-`
 ## -> CapnCodegen, no CLI shim, no headless-Godot subprocess). Needs a real
 ## capnp binary, so it is gated on CAPNGODO_TEST_CAPNP (or capnp on PATH) and

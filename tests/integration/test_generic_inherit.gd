@@ -1,5 +1,4 @@
 extends GutTest
-
 ## CG1d — inherit scopes. A struct nested inside a generic that uses the generic's
 ## type parameter (`Outer(T) { struct Inner { value @0 :T } }`) inherits T via an
 ## INHERIT brand scope. Monomorphizing Outer(Text) emits a per-instantiation inner
@@ -7,17 +6,16 @@ extends GutTest
 ## resolves to it (not the erased Outer_Inner floor). Uses the generated
 ## GenericInheritCapnp.
 
-
 func test_inherited_param_resolves_through_the_inner_mono() -> void:
 	var u: GenericInheritCapnp.Use.Builder = GenericInheritCapnp.new_use()
 	var inner: GenericInheritCapnp.Outer_Inner_Text.Builder = u.init_o().init_inner()
-	inner.set_value("payload")    # typed String setter on the inherited param
+	inner.set_value("payload") # typed String setter on the inherited param
 	inner.set_label("tag")
 
 	var r: GenericInheritCapnp.Use.Reader = GenericInheritCapnp.read_use(u.to_bytes())
 	# get_o() -> Outer_Text.Reader, get_inner() -> Outer_Inner_Text.Reader (typed).
 	var rinner: GenericInheritCapnp.Outer_Inner_Text.Reader = r.get_o().get_inner()
-	var v: String = rinner.get_value()   # typed local guards the String resolution
+	var v: String = rinner.get_value() # typed local guards the String resolution
 	assert_eq(v, "payload", "inherited param T resolved to String")
 	assert_eq(rinner.get_label(), "tag", "sibling normal field still works")
 

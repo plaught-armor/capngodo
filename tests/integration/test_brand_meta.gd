@@ -1,10 +1,8 @@
 extends GutTest
-
 ## CG1b step 1: the meta_schema Brand / anyPointer.parameter accessors, verified
 ## against a real capnp CGR (tests/fixtures/generic.cgr.bin, from generic.capnp:
 ## Box(T){value,label}; Container{boxedText:Box(Text); boxedStruct:Box(Inner);
 ## boxedList:Box(List(Int32))}). Confirms every wire offset in docs/CG1B_PLAN.md.
-
 
 func _cgr() -> CapnReader.StructReader:
 	var f: FileAccess = FileAccess.open("res://tests/fixtures/generic.cgr.bin", FileAccess.READ)

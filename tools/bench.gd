@@ -1,5 +1,4 @@
 extends SceneTree
-
 ## Headless micro-benchmark for the capngodo runtime codec.
 ##
 ## Run:
@@ -28,9 +27,14 @@ func _initialize() -> void:
 
 	var bytes: PackedByteArray = _build_payload(n)
 	print("=== capngodo bench ===")
-	print("payload: AddressBook x %d people = %d bytes (%.1f KiB), iters=%d" % [
-		n, bytes.size(), bytes.size() / 1024.0, iters,
-	])
+	print(
+		"payload: AddressBook x %d people = %d bytes (%.1f KiB), iters=%d" % [
+			n,
+			bytes.size(),
+			bytes.size() / 1024.0,
+			iters,
+		],
+	)
 	print("")
 
 	_bench_build(n, iters, bytes.size())
@@ -39,8 +43,8 @@ func _initialize() -> void:
 
 	quit(0)
 
-
 # --- phases --------------------------------------------------------------
+
 
 func _bench_build(n: int, iters: int, out_bytes: int) -> void:
 	# Warm once (JIT-equivalent: first run pays parse/alloc warmup).
@@ -68,9 +72,12 @@ func _bench_decode(bytes: PackedByteArray, iters: int) -> void:
 
 func _bench_pack(bytes: PackedByteArray, iters: int) -> void:
 	var packed: PackedByteArray = CapnPacked.pack(bytes)
-	print("  packed size: %d bytes (%.1f%% of plain)" % [
-		packed.size(), 100.0 * packed.size() / bytes.size(),
-	])
+	print(
+		"  packed size: %d bytes (%.1f%% of plain)" % [
+			packed.size(),
+			100.0 * packed.size() / bytes.size(),
+		],
+	)
 	var start_p: int = Time.get_ticks_usec()
 	var i: int = 0
 	while i < iters:
@@ -85,8 +92,8 @@ func _bench_pack(bytes: PackedByteArray, iters: int) -> void:
 		i += 1
 	_report("unpack", Time.get_ticks_usec() - start_u, iters, packed.size())
 
-
 # --- payload -------------------------------------------------------------
+
 
 ## Build an AddressBook of N people, each with a name/email/id and two phones,
 ## then serialize. Returns the encoded bytes.
@@ -125,16 +132,21 @@ func _decode_traverse(bytes: PackedByteArray) -> int:
 			sum += ph.get_type()
 	return sum
 
-
 # --- reporting -----------------------------------------------------------
+
 
 func _report(label: String, elapsed_us: int, iters: int, payload_bytes: int) -> void:
 	var per_iter_ms: float = (elapsed_us / 1000.0) / iters
 	var ops_per_sec: float = iters * 1_000_000.0 / maxi(elapsed_us, 1)
-	var mb_per_sec: float = (payload_bytes * iters) / maxf(elapsed_us, 1.0)  # bytes/us = MB/s
-	print("  %s  %8.3f ms/iter   %9.1f ops/s   %7.1f MB/s" % [
-		label, per_iter_ms, ops_per_sec, mb_per_sec,
-	])
+	var mb_per_sec: float = (payload_bytes * iters) / maxf(elapsed_us, 1.0) # bytes/us = MB/s
+	print(
+		"  %s  %8.3f ms/iter   %9.1f ops/s   %7.1f MB/s" % [
+			label,
+			per_iter_ms,
+			ops_per_sec,
+			mb_per_sec,
+		],
+	)
 
 
 func _env_int(key: String, fallback: int) -> int:

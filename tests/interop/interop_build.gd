@@ -1,5 +1,4 @@
 extends SceneTree
-
 ## Interop driver for tools/run_interop.sh. Two modes (args after `--`):
 ##   build  <file>   write a canonical Root message (via the generated builder)
 ##   verify <file>   read a Root message and assert its fields; exit 1 on mismatch

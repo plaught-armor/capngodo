@@ -1,5 +1,5 @@
-class_name CapnSchema extends RefCounted
-
+class_name CapnSchema
+extends RefCounted
 ## Typed accessors over a CodeGeneratorRequest message (capnp/schema.capnp),
 ## the input a `capnp compile -o-` plugin receives on stdin. Hand-written
 ## "generated-style" code that bootstraps the codegen plugin: it lets the plugin
@@ -32,9 +32,25 @@ enum FieldWhich { SLOT, GROUP }
 
 # Type.which() / Value.which() — byte 0 (u16). Shared declaration order.
 enum TypeWhich {
-	VOID, BOOL, INT8, INT16, INT32, INT64,
-	UINT8, UINT16, UINT32, UINT64, FLOAT32, FLOAT64,
-	TEXT, DATA, LIST, ENUM, STRUCT, INTERFACE, ANY_POINTER,
+	VOID,
+	BOOL,
+	INT8,
+	INT16,
+	INT32,
+	INT64,
+	UINT8,
+	UINT16,
+	UINT32,
+	UINT64,
+	FLOAT32,
+	FLOAT64,
+	TEXT,
+	DATA,
+	LIST,
+	ENUM,
+	STRUCT,
+	INTERFACE,
+	ANY_POINTER,
 }
 
 # --- CodeGeneratorRequest (pointer section) ---
@@ -43,19 +59,19 @@ const CGR_PTR_REQUESTED_FILES: int = 1
 const CGR_PTR_CAPNP_VERSION: int = 2
 
 # --- Node ---
-const NODE_OFF_ID: int = 0            # u64
-const NODE_OFF_PREFIX_LEN: int = 8    # u32
-const NODE_OFF_WHICH: int = 12        # u16
-const NODE_OFF_SCOPE_ID: int = 16     # u64
-const NODE_BIT_IS_GENERIC: int = 288  # bool
+const NODE_OFF_ID: int = 0 # u64
+const NODE_OFF_PREFIX_LEN: int = 8 # u32
+const NODE_OFF_WHICH: int = 12 # u16
+const NODE_OFF_SCOPE_ID: int = 16 # u64
+const NODE_BIT_IS_GENERIC: int = 288 # bool
 const NODE_PTR_DISPLAY_NAME: int = 0
 const NODE_PTR_NESTED_NODES: int = 1
 const NODE_PTR_PARAMETERS: int = 5
 # Node.struct group (shares Node's data/ptr section)
-const STRUCT_OFF_DATA_WORDS: int = 14         # u16
+const STRUCT_OFF_DATA_WORDS: int = 14 # u16
 const STRUCT_OFF_DISCRIMINANT_OFFSET: int = 32 # u32
-const STRUCT_OFF_POINTER_COUNT: int = 24       # u16
-const STRUCT_OFF_DISCRIMINANT_COUNT: int = 30  # u16
+const STRUCT_OFF_POINTER_COUNT: int = 24 # u16
+const STRUCT_OFF_DISCRIMINANT_COUNT: int = 30 # u16
 const STRUCT_PTR_FIELDS: int = 3
 # Node.enum group
 const ENUM_PTR_ENUMERANTS: int = 3
@@ -64,43 +80,43 @@ const CONST_PTR_TYPE: int = 3
 const CONST_PTR_VALUE: int = 4
 
 # --- Node.NestedNode ---
-const NESTED_OFF_ID: int = 0  # u64
+const NESTED_OFF_ID: int = 0 # u64
 const NESTED_PTR_NAME: int = 0
 
 # --- Field ---
-const FIELD_OFF_CODE_ORDER: int = 0        # u16
+const FIELD_OFF_CODE_ORDER: int = 0 # u16
 const FIELD_OFF_DISCRIMINANT_VALUE: int = 2 # u16, default 0xffff
-const FIELD_OFF_WHICH: int = 8             # u16
+const FIELD_OFF_WHICH: int = 8 # u16
 const FIELD_PTR_NAME: int = 0
 const FIELD_NO_DISCRIMINANT: int = 0xffff
 # Field.slot group
-const SLOT_OFF_OFFSET: int = 4             # u32
-const SLOT_BIT_HAD_DEFAULT: int = 128      # bool
+const SLOT_OFF_OFFSET: int = 4 # u32
+const SLOT_BIT_HAD_DEFAULT: int = 128 # bool
 const SLOT_PTR_TYPE: int = 2
 const SLOT_PTR_DEFAULT_VALUE: int = 3
 # Field.group group
-const GROUP_OFF_TYPE_ID: int = 16          # u64
+const GROUP_OFF_TYPE_ID: int = 16 # u64
 
 # --- Type ---
-const TYPE_OFF_WHICH: int = 0              # u16
-const TYPE_OFF_TYPE_ID: int = 8            # u64 (enum/struct/interface variants)
-const TYPE_LIST_PTR_ELEMENT: int = 0       # Type.list.elementType
-const TYPE_PTR_BRAND: int = 0              # Type.{struct,enum,interface}.brand (ptr 0)
+const TYPE_OFF_WHICH: int = 0 # u16
+const TYPE_OFF_TYPE_ID: int = 8 # u64 (enum/struct/interface variants)
+const TYPE_LIST_PTR_ELEMENT: int = 0 # Type.list.elementType
+const TYPE_PTR_BRAND: int = 0 # Type.{struct,enum,interface}.brand (ptr 0)
 # Type.anyPointer sub-union (gate on type_which() == ANY_POINTER first).
-const ANYPTR_OFF_WHICH: int = 8           # u16 — Type.anyPointer.which()
-const ANYPTR_PARAM_OFF_SCOPE: int = 16    # u64 — anyPointer.parameter.scopeId
-const ANYPTR_PARAM_OFF_INDEX: int = 10    # u16 — anyPointer.parameter.parameterIndex
+const ANYPTR_OFF_WHICH: int = 8 # u16 — Type.anyPointer.which()
+const ANYPTR_PARAM_OFF_SCOPE: int = 16 # u64 — anyPointer.parameter.scopeId
+const ANYPTR_PARAM_OFF_INDEX: int = 10 # u16 — anyPointer.parameter.parameterIndex
 
 # Type.anyPointer.which() — byte 8 (u16).
 enum AnyPtrWhich { UNCONSTRAINED, PARAMETER, IMPLICIT_METHOD_PARAMETER }
 
 # --- Brand (generic parameter bindings) ---
-const BRAND_PTR_SCOPES: int = 0           # List(Brand.Scope)
-const SCOPE_OFF_ID: int = 0               # u64 — Brand.Scope.scopeId
-const SCOPE_OFF_WHICH: int = 8            # u16 — Brand.Scope.which()
-const SCOPE_PTR_BIND: int = 0             # List(Brand.Binding)
-const BINDING_OFF_WHICH: int = 0          # u16 — Brand.Binding.which()
-const BINDING_PTR_TYPE: int = 0           # Brand.Binding.type (a Type)
+const BRAND_PTR_SCOPES: int = 0 # List(Brand.Scope)
+const SCOPE_OFF_ID: int = 0 # u64 — Brand.Scope.scopeId
+const SCOPE_OFF_WHICH: int = 8 # u16 — Brand.Scope.which()
+const SCOPE_PTR_BIND: int = 0 # List(Brand.Binding)
+const BINDING_OFF_WHICH: int = 0 # u16 — Brand.Binding.which()
+const BINDING_PTR_TYPE: int = 0 # Brand.Binding.type (a Type)
 
 # Brand.Scope.which() — byte 8 (u16).
 enum BrandScopeWhich { BIND, INHERIT }
@@ -108,24 +124,24 @@ enum BrandScopeWhich { BIND, INHERIT }
 enum BindingWhich { UNBOUND, TYPE }
 
 # --- Value (union; gate reads on value_which) ---
-const VALUE_OFF_WHICH: int = 0             # u16
-const VALUE_BIT_BOOL: int = 16             # bool at bit 16 (byte 2)
-const VALUE_OFF_8: int = 2                 # int8/uint8
-const VALUE_OFF_16: int = 2                # int16/uint16/enum
-const VALUE_OFF_32: int = 4                # int32/uint32/float32
-const VALUE_OFF_64: int = 8                # int64/uint64/float64
-const VALUE_PTR: int = 0                   # text/data
+const VALUE_OFF_WHICH: int = 0 # u16
+const VALUE_BIT_BOOL: int = 16 # bool at bit 16 (byte 2)
+const VALUE_OFF_8: int = 2 # int8/uint8
+const VALUE_OFF_16: int = 2 # int16/uint16/enum
+const VALUE_OFF_32: int = 4 # int32/uint32/float32
+const VALUE_OFF_64: int = 8 # int64/uint64/float64
+const VALUE_PTR: int = 0 # text/data
 
 # --- Enumerant ---
-const ENUMERANT_OFF_CODE_ORDER: int = 0    # u16
+const ENUMERANT_OFF_CODE_ORDER: int = 0 # u16
 const ENUMERANT_PTR_NAME: int = 0
 
 # --- CodeGeneratorRequest.RequestedFile ---
-const REQFILE_OFF_ID: int = 0              # u64
+const REQFILE_OFF_ID: int = 0 # u64
 const REQFILE_PTR_FILENAME: int = 0
 
-
 # --- CodeGeneratorRequest ----------------------------------------------
+
 
 ## Returns the CodeGeneratorRequest root, or null on malformed input — the
 ## caller must null-check before using any accessor below.
@@ -144,8 +160,8 @@ static func cgr_nodes(cgr: CapnReader.StructReader) -> CapnReader.ListReader:
 static func cgr_requested_files(cgr: CapnReader.StructReader) -> CapnReader.ListReader:
 	return cgr.get_list(CGR_PTR_REQUESTED_FILES)
 
-
 # --- Node --------------------------------------------------------------
+
 
 static func node_id(n: CapnReader.StructReader) -> int:
 	return n.get_u64(NODE_OFF_ID, 0)
@@ -219,8 +235,8 @@ static func node_struct_fields(n: CapnReader.StructReader) -> CapnReader.ListRea
 static func node_enum_enumerants(n: CapnReader.StructReader) -> CapnReader.ListReader:
 	return n.get_list(ENUM_PTR_ENUMERANTS)
 
-
 # --- Node.NestedNode ---------------------------------------------------
+
 
 static func nested_id(nn: CapnReader.StructReader) -> int:
 	return nn.get_u64(NESTED_OFF_ID, 0)
@@ -229,8 +245,8 @@ static func nested_id(nn: CapnReader.StructReader) -> int:
 static func nested_name(nn: CapnReader.StructReader) -> String:
 	return nn.get_text(NESTED_PTR_NAME)
 
-
 # --- Field -------------------------------------------------------------
+
 
 static func field_name(f: CapnReader.StructReader) -> String:
 	return f.get_text(FIELD_PTR_NAME)
@@ -271,8 +287,8 @@ static func field_slot_had_default(f: CapnReader.StructReader) -> bool:
 static func field_group_type_id(f: CapnReader.StructReader) -> int:
 	return f.get_u64(GROUP_OFF_TYPE_ID, 0)
 
-
 # --- Type --------------------------------------------------------------
+
 
 static func type_which(t: CapnReader.StructReader) -> TypeWhich:
 	return t.get_u16(TYPE_OFF_WHICH, 0) as TypeWhich
@@ -314,8 +330,8 @@ static func anyptr_param_scope_id(t: CapnReader.StructReader) -> int:
 static func anyptr_param_index(t: CapnReader.StructReader) -> int:
 	return t.get_u16(ANYPTR_PARAM_OFF_INDEX, 0)
 
-
 # --- Brand -------------------------------------------------------------
+
 
 static func brand_scopes(b: CapnReader.StructReader) -> CapnReader.ListReader:
 	return b.get_list(BRAND_PTR_SCOPES)
@@ -342,8 +358,8 @@ static func binding_which(b: CapnReader.StructReader) -> BindingWhich:
 static func binding_type(b: CapnReader.StructReader) -> CapnReader.StructReader:
 	return b.get_struct(BINDING_PTR_TYPE)
 
-
 # --- Enumerant ---------------------------------------------------------
+
 
 static func enumerant_name(e: CapnReader.StructReader) -> String:
 	return e.get_text(ENUMERANT_PTR_NAME)
@@ -352,8 +368,8 @@ static func enumerant_name(e: CapnReader.StructReader) -> String:
 static func enumerant_code_order(e: CapnReader.StructReader) -> int:
 	return e.get_u16(ENUMERANT_OFF_CODE_ORDER, 0)
 
-
 # --- RequestedFile -----------------------------------------------------
+
 
 static func req_file_id(rf: CapnReader.StructReader) -> int:
 	return rf.get_u64(REQFILE_OFF_ID, 0)
@@ -362,9 +378,9 @@ static func req_file_id(rf: CapnReader.StructReader) -> int:
 static func req_file_name(rf: CapnReader.StructReader) -> String:
 	return rf.get_text(REQFILE_PTR_FILENAME)
 
-
 # --- Value (field defaults / const values) -----------------------------
 # Gate each read on value_which(); reading the wrong variant is undefined.
+
 
 static func value_which(v: CapnReader.StructReader) -> TypeWhich:
 	return v.get_u16(VALUE_OFF_WHICH, 0) as TypeWhich

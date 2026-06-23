@@ -1,9 +1,7 @@
 extends GutTest
-
 ## Const declarations (CG9): schema-level `const` nodes emit class-scoped
 ## GDScript consts on the umbrella class. Uses the generated ConstsCapnp (from
 ## tests/golden/consts.capnp).
-
 
 func test_scalar_consts() -> void:
 	assert_eq(ConstsCapnp.MAX_ITEMS, 100, "Int32 const")

@@ -1,6 +1,6 @@
 @tool
-class_name CapnInstaller extends Node
-
+class_name CapnInstaller
+extends Node
 ## Downloads the capnp compiler for the current platform from capngodo's GitHub
 ## releases (built by .github/workflows/capnp-release.yml), extracts the binary
 ## into CapnTool.cache_dir(), and records the path in ProjectSettings so
@@ -28,7 +28,7 @@ var _http: HTTPRequest = null
 
 func _ready() -> void:
 	_http = HTTPRequest.new()
-	_http.timeout = 30.0  # don't spin forever on a stalled API / download
+	_http.timeout = 30.0 # don't spin forever on a stalled API / download
 	add_child(_http)
 	_http.request_completed.connect(_on_request_completed)
 
