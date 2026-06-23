@@ -182,20 +182,19 @@ static func encode_composite_tag(elem_count: int, data_words: int, ptr_words: in
 static func elem_size_bytes(code: ElemSize) -> int:
 	if code == ElemSize.VOID:
 		return 0
-	elif code == ElemSize.BIT:
+	if code == ElemSize.BIT:
 		return 0 # sub-byte; caller handles bit packing
-	elif code == ElemSize.BYTE:
+	if code == ElemSize.BYTE:
 		return 1
-	elif code == ElemSize.TWO_BYTES:
+	if code == ElemSize.TWO_BYTES:
 		return 2
-	elif code == ElemSize.FOUR_BYTES:
+	if code == ElemSize.FOUR_BYTES:
 		return 4
-	elif code == ElemSize.EIGHT_BYTES:
+	if code == ElemSize.EIGHT_BYTES:
 		return 8
-	elif code == ElemSize.POINTER:
+	if code == ElemSize.POINTER:
 		return 8
-	else: # ElemSize.COMPOSITE
-		return -1
+	return -1 # ElemSize.COMPOSITE
 
 
 static func is_capability(p: CapnPointer) -> bool:
