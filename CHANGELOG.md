@@ -6,6 +6,8 @@ All notable changes to capngodo are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-24
+
 ### Added
 
 - **Lazy reader iteration** — for every `List(struct)` field the codegen now
