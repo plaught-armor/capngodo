@@ -15,11 +15,17 @@ const WORD_BYTES: int = 8
 
 
 static func open(bytes: PackedByteArray, packed: bool, limits: CapnLimits = null) -> Message:
-	var raw: PackedByteArray = CapnPacked.unpack(bytes) if packed else bytes
+	# Resolve limits up front so the unpack step can be capped: packed zero/literal
+	# runs expand up to ~1024x, so a hostile stream would OOM during unpack — long
+	# before framing or the traversal limit see it. Cap the unpacked size at the
+	# traversal-word ceiling; any message that unpacks larger would be rejected by
+	# the reader anyway.
+	var lim: CapnLimits = limits if limits != null else CapnLimits.new()
+	var raw: PackedByteArray = CapnPacked.unpack(bytes, lim.traversal_word_limit) if packed else bytes
 	var segs: CapnSegments = CapnFraming.read(raw)
 	if segs == null:
 		return null
-	return _make_message(segs, limits)
+	return _make_message(segs, lim)
 
 
 ## Open from already-parsed segments (no stream framing) — e.g. the `flat`
@@ -171,7 +177,10 @@ class Message extends RefCounted:
 		if content_word < 0 or content_word + span > seg_words:
 			fail("object out of bounds (seg %d word %d span %d)" % [seg_id, content_word, span])
 			return null_target()
-		traversal_words_used += span if span > 0 else 1
+		var charge: int = span if span > 0 else 1
+		if a == CapnPointer.Kind.LIST:
+			charge = _list_charge_words(ecode, ecount, span)
+		traversal_words_used += charge
 		if traversal_words_used > limits.traversal_word_limit:
 			fail("traversal limit exceeded")
 			return null_target()
@@ -243,7 +252,10 @@ class Message extends RefCounted:
 					return null_target()
 			else:
 				var body: int = _list_body_words(ptr.elem_size_code, ptr.elem_count)
-				if not _check(seg_id, content_word, body):
+				# Bounds-check the physical body, but charge the amplified cost so a
+				# huge zero-width List(Void) can't slip the traversal budget.
+				var charge: int = _list_charge_words(ptr.elem_size_code, ptr.elem_count, body)
+				if not _check(seg_id, content_word, body, charge):
 					return null_target()
 			t.is_null = false
 			return t
@@ -255,12 +267,15 @@ class Message extends RefCounted:
 
 
 	## Bounds-check the object span and charge it to the traversal counter.
-	func _check(seg_id: int, word_off: int, span_words: int) -> bool:
+	## charge_words overrides the amount charged (defaults to the physical span);
+	## list callers pass the amplified charge so a huge List(Void) is rejected.
+	func _check(seg_id: int, word_off: int, span_words: int, charge_words: int = -1) -> bool:
 		if not segments.words_in_bounds(seg_id, word_off, span_words):
 			fail("object out of bounds (seg %d word %d span %d)" % [seg_id, word_off, span_words])
 			return false
 		# Charge at least one word per dereference so deeply-nested empties cost.
-		traversal_words_used += span_words if span_words > 0 else 1
+		var charge: int = charge_words if charge_words >= 0 else span_words
+		traversal_words_used += charge if charge > 0 else 1
 		if traversal_words_used > limits.traversal_word_limit:
 			fail("traversal limit exceeded")
 			return false
@@ -279,6 +294,20 @@ class Message extends RefCounted:
 		@warning_ignore("integer_division")
 		var body_words: int = (count * elem_bytes + WORD_BYTES - 1) / WORD_BYTES
 		return body_words
+
+
+	## Words to charge the traversal budget when following a list. A List(Void)
+	## body is zero physical words yet carries a 29-bit element count, so a huge
+	## void list passes the segment-bounds check (0 words) but would still drive an
+	## eager get_<field>() to resize() an enormous Array -> OOM. capnp guards this
+	## with an "amplified read" of one word per void element (layout.c++ :2417);
+	## mirror it. BIT / byte / pointer / composite bodies already grow with count,
+	## so the bounds check caps those — charge their real span. Floor at 1 so a
+	## deeply-nested chain of empties still costs against the budget.
+	static func _list_charge_words(code: CapnPointer.ElemSize, count: int, body_words: int) -> int:
+		if code == CapnPointer.ElemSize.VOID:
+			return count if count > 0 else 1
+		return body_words if body_words > 0 else 1
 
 
 	func fail(message: String) -> void:
@@ -338,7 +367,7 @@ class StructReader extends RefCounted:
 
 
 	static func _make_scratch(n: int) -> PackedByteArray:
-		var b: PackedByteArray = PackedByteArray()
+		var b: PackedByteArray = []
 		b.resize(n)
 		return b
 
@@ -572,7 +601,11 @@ class StructReader extends RefCounted:
 		if content_word < 0 or content_word + span > seg_words:
 			_fill_list_slow(ptr_index, out)
 			return
-		msg.traversal_words_used += span if span > 0 else 1
+		# Void amplification: zero-width body, 29-bit count -> charge 1 word/elem so
+		# a huge List(Void) is rejected before an eager getter resize()s on it
+		# (capnp parity; mirrors Message._list_charge_words for the inlined path).
+		var charge: int = ecount if ecode == CapnPointer.ElemSize.VOID else (span if span > 0 else 1)
+		msg.traversal_words_used += charge
 		if msg.traversal_words_used > msg.limits.traversal_word_limit:
 			msg.fail("traversal limit exceeded")
 			return # out stays empty
@@ -588,11 +621,29 @@ class StructReader extends RefCounted:
 			var cnt: int = (tag_lo >> 2) & 0x3FFFFFFF
 			if cnt >= 0x20000000:
 				cnt -= 0x40000000
+			var cdw: int = tag_hi & 0xffff
+			var cpw: int = (tag_hi >> 16) & 0xffff
+			var sw: int = cdw + cpw
+			# The tag's element count * per-element words must fit the body the list
+			# pointer declared (ecount), else an eager getter resize()s past the data
+			# (capnp layout.c++ :2334).
+			if cnt < 0 or sw * cnt > ecount:
+				out.reset_empty(msg)
+				msg.fail("composite list elements overrun declared body")
+				return
+			# Zero-width element structs carry no body, so a huge count slips the
+			# bounds check just like List(Void) — charge 1 word/elem (capnp :2340).
+			if sw == 0:
+				msg.traversal_words_used += cnt
+				if msg.traversal_words_used > msg.limits.traversal_word_limit:
+					out.reset_empty(msg)
+					msg.fail("traversal limit exceeded")
+					return
 			out.is_composite = true
 			out.count = cnt
-			out.comp_data_words = tag_hi & 0xffff
-			out.comp_ptr_words = (tag_hi >> 16) & 0xffff
-			out.step_words = out.comp_data_words + out.comp_ptr_words
+			out.comp_data_words = cdw
+			out.comp_ptr_words = cpw
+			out.step_words = sw
 			out.first_elem_word = content_word + 1
 		else:
 			out.count = ecount
@@ -665,7 +716,7 @@ class StructReader extends RefCounted:
 	## Data twin of get_text — same inlined byte-list fast path, but returns the
 	## raw bytes (no NUL drop). Falls to _get_data_slow for the rest.
 	# Wire->enum boundary: bit-extracted codes compared against enum values (D10a).
-	@warning_ignore("int_as_enum_without_cast") func get_data(ptr_index: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
+	@warning_ignore("int_as_enum_without_cast") func get_data(ptr_index: int, default_value: PackedByteArray = []) -> PackedByteArray:
 		if ptr_index < 0 or ptr_index >= ptr_words:
 			return default_value
 		if depth_remaining <= 0:
@@ -771,11 +822,26 @@ class ListReader extends RefCounted:
 			# follow() has already drained its decode into `t`, so its scratch pointer
 			# is free to reuse for the tag word here.
 			var tag: CapnPointer = p_msg.decode_ptr(t.seg_id, t.content_word)
+			var cnt: int = tag.offset
+			var sw: int = tag.data_words + tag.ptr_words
+			# Slow-path twin of the fill_list composite guard. t.elem_count is the
+			# list pointer's declared body word count; the tag's element count must
+			# fit it (capnp layout.c++ :2334), and zero-width elements must charge the
+			# amplified count (:2340) or a huge count OOMs an eager getter. reset_empty
+			# already ran, so an early return leaves a zero-length list.
+			if cnt < 0 or sw * cnt > t.elem_count:
+				p_msg.fail("composite list elements overrun declared body")
+				return
+			if sw == 0:
+				p_msg.traversal_words_used += cnt
+				if p_msg.traversal_words_used > p_msg.limits.traversal_word_limit:
+					p_msg.fail("traversal limit exceeded")
+					return
 			is_composite = true
-			count = tag.offset
+			count = cnt
 			comp_data_words = tag.data_words
 			comp_ptr_words = tag.ptr_words
-			step_words = tag.data_words + tag.ptr_words
+			step_words = sw
 			first_elem_word = t.content_word + 1
 		else:
 			count = t.elem_count
@@ -962,7 +1028,7 @@ class ListReader extends RefCounted:
 		return msg.text_from_target(t)
 
 
-	func get_data(i: int, default_value: PackedByteArray = PackedByteArray()) -> PackedByteArray:
+	func get_data(i: int, default_value: PackedByteArray = []) -> PackedByteArray:
 		var t: CapnTarget = _follow_elem(i)
 		if t.is_null or t.kind != CapnPointer.Kind.LIST:
 			return default_value

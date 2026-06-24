@@ -6,6 +6,38 @@ All notable changes to capngodo are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Security
+
+- **List-amplification OOM hardening.** A malformed message could claim a list
+  of up to 2²⁹ elements with a near-zero physical body and drive an eager
+  `get_<field>()` to allocate an enormous `Array` (~8 GB from ~48 input bytes).
+  Two vectors are now rejected against the traversal limit, matching the
+  reference implementation's amplified-read accounting (`layout.c++`): a
+  `List(Void)` (zero-width elements, 29-bit count) and a `List(struct)` whose
+  element tag declares a zero-width struct. Composite lists also now reject a
+  tag element count that overruns the list pointer's declared body. The fix
+  covers both the inlined hot path and the layered far-pointer path; regression
+  tests build each hostile buffer and confirm the list reads back empty with
+  `had_error` set rather than allocating.
+- **Packed-decode amplification OOM hardening.** The packed codec's zero/literal
+  runs expand up to ~1024× (a two-byte zero-run tag emits 256 words), and
+  `unpack()` ran to completion eagerly — so a hostile packed stream ballooned to
+  gigabytes *before* framing or the traversal limit could apply (e.g. ~1 MB of
+  input → ~1 GB allocated). `CapnReader.open()` now caps the unpacked size at the
+  traversal-word ceiling; a stream that unpacks larger is rejected (and would be
+  rejected by the reader anyway). `CapnPacked.unpack()` gained an optional
+  `max_out_words` ceiling (0 = unlimited, preserving the trusted round-trip path).
+
+### Tests
+
+- **Fuzz suite hardening.** The malformed-input fuzz now sweeps multiple seeds
+  (8 × 800 = 6400 distinct hostile buffers) and mutates a diversified base
+  corpus (a union-bearing AddressBook, a multi-segment message exercising
+  double-far resolution, and nested `List(List(...))`), so mutation reaches
+  decode paths a single small frame can't. A new assertion verifies the
+  hand-crafted limit traps return `null` or set `had_error` (catching
+  silent-accept of garbage, not just no-fault).
+
 ## [0.2.0] — 2026-06-24
 
 ### Added
