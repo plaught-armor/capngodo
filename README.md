@@ -53,8 +53,14 @@ builders produce bytes that `capnp decode` reads back correctly.
   (capability) fields (decode to cap-table index; serialization-only).
 - Typed returns: list getters return `Array[T]` (`Array[X.Reader]`,
   `Array[String]`, `Array[int]`, …); enum fields return the generated enum.
+- Lazy iteration: alongside the eager `get_<field>() -> Array` / `init_<field>(n)
+  -> Array`, `List(struct)` fields also get `iter_<field>()` (read) and
+  `init_<field>_iter(n)` (write) — `for e in r.iter_<field>(): …` reuses one
+  element reader/builder per step (no per-element allocation). The yielded
+  reader/builder is a transient view valid only for the current step.
 - Cross-file type references — a field of an imported type resolves to that
-  file's generated umbrella class (request all files together).
+  file's generated umbrella class even when the imported file isn't in the same
+  request (`Common.Point` → `CommonCapnp.Point.Reader`); generate each file once.
 - Generics: type-erased accessors for parameter / `AnyPointer` fields
   (`Box(T)` → `Box`), plus monomorphized typed classes for concrete
   instantiations (`Box(Text)` → `Box_Text` with `get_value() -> String`).
@@ -299,6 +305,7 @@ default (forward/backward schema compatibility).
 | `get_data(ptr, def = PackedByteArray())` | `PackedByteArray` |
 | `get_struct(ptr)` | `StructReader` (empty reader if null) |
 | `get_list(ptr)` | `ListReader` |
+| `fill_list(ptr, out: ListReader)` | populate a caller-owned `ListReader` (the alloc-free lazy primitive; `get_list` wraps it) |
 | `get_cap_index(ptr)` | `int` (capability table index, or -1) |
 | `has_ptr(ptr)` | `bool` (false for a null pointer field) |
 
@@ -368,6 +375,7 @@ you call by name — no offsets.
 |---|---|
 | `get_<field>()` | scalar / Text / Data / enum (int) / nested `Reader` |
 | `get_<field>() -> Array` | a list (elements are the typed `Reader`) |
+| `iter_<field>()` | `List(struct)` lazy iterator (`for e in r.iter_<field>(): …`) — yields one reused `Reader` per step, no `Array`. View only, don't retain. |
 
 `Foo.Builder` (via `new_*` or `Foo.Builder.wrap(struct_builder)`):
 
@@ -376,6 +384,7 @@ you call by name — no offsets.
 | `set_<field>(value)` | scalar / Text / Data / enum |
 | `init_<field>() -> <Child>.Builder` | nested struct |
 | `init_<field>(n) -> Array` | composite (struct) list → element `Builder`s |
+| `init_<field>_iter(n)` | `List(struct)` lazy writer (`for e in b.init_<field>_iter(n): e.set_…`) — one reused `Builder` per step, no `Array` |
 | `init_<field>(n) -> CapnBuilder.ListBuilder` | primitive / Text list (set elements via the ListBuilder) |
 | `to_bytes(packed = false)` | serialize |
 
@@ -406,9 +415,11 @@ reads back as the declared default.
 
 Readers are lazy views over untrusted bytes. On a malformed pointer,
 out-of-bounds target, or a blown limit, a getter returns the default / an empty
-reader and calls `push_error` (set `Message.had_error` is also set). Limits are
+reader and calls `push_error` (`Message.had_error` is also set). Limits are
 configurable via `CapnLimits` (traversal-word ceiling + pointer depth, defaults
-~64 MiB / depth 64) passed to `CapnReader.open`.
+~64 MiB / depth 64) passed to `CapnReader.open`. These guards are exercised by a
+malformed-input fuzz (see [Testing](#testing)) — hostile bytes never fault the
+decoder.
 
 ## Testing
 
@@ -424,7 +435,11 @@ godot.exe --headless --path . -s addons/gut/gut_cmdln.gd -gdir=res://tests -ginc
 ```
 
 Runs the full GUT suite headless. Integration tests decode the real Cap'n Proto
-`testdata/` fixtures and round-trip the generated readers/builders.
+`testdata/` fixtures and round-trip the generated readers/builders. Two property
+fuzz suites guard correctness and robustness: random build → serialize → read
+round-trips (eager + lazy, packed + unpacked), and a malformed-input fuzz
+(random / truncated / byte-flipped / adversarial buffers) asserting the decoder
+never crashes, hangs, or OOMs on untrusted bytes.
 
 For **bidirectional interop** against the reference implementation (the method
 [recommended by Cap'n Proto](https://capnproto.org/otherlang.html) — `capnp`
