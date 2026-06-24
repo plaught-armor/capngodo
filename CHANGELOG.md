@@ -19,6 +19,14 @@ All notable changes to capngodo are documented here. Format loosely follows
   covers both the inlined hot path and the layered far-pointer path; regression
   tests build each hostile buffer and confirm the list reads back empty with
   `had_error` set rather than allocating.
+- **Packed-decode amplification OOM hardening.** The packed codec's zero/literal
+  runs expand up to ~1024× (a two-byte zero-run tag emits 256 words), and
+  `unpack()` ran to completion eagerly — so a hostile packed stream ballooned to
+  gigabytes *before* framing or the traversal limit could apply (e.g. ~1 MB of
+  input → ~1 GB allocated). `CapnReader.open()` now caps the unpacked size at the
+  traversal-word ceiling; a stream that unpacks larger is rejected (and would be
+  rejected by the reader anyway). `CapnPacked.unpack()` gained an optional
+  `max_out_words` ceiling (0 = unlimited, preserving the trusted round-trip path).
 
 ### Tests
 

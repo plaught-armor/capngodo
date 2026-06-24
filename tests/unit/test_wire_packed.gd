@@ -25,7 +25,7 @@ func test_pack_struct_then_text_example() -> void:
 
 func test_zero_run_example() -> void:
 	# encoding.md :333 — 32 zero bytes -> 00 03.
-	var unpacked: PackedByteArray = PackedByteArray()
+	var unpacked: PackedByteArray = []
 	unpacked.resize(32)
 	assert_eq(CapnPacked.pack(unpacked), _hex("0003"))
 	assert_eq(CapnPacked.unpack(_hex("0003")), unpacked)
@@ -33,7 +33,7 @@ func test_zero_run_example() -> void:
 
 func test_literal_run_example() -> void:
 	# encoding.md :336 — 0x8a x32 -> ff 8a*8 03 8a*24.
-	var unpacked: PackedByteArray = PackedByteArray()
+	var unpacked: PackedByteArray = []
 	unpacked.resize(32)
 	unpacked.fill(0x8a)
 	var expected: PackedByteArray = _hex("ff") + _repeat(0x8a, 8) + _hex("03") + _repeat(0x8a, 24)
@@ -60,8 +60,32 @@ func test_roundtrip_binary_fixture() -> void:
 	assert_eq(CapnPacked.unpack(CapnPacked.pack(binary)), binary)
 
 
+func test_unpack_amplification_capped() -> void:
+	# Packed zero-runs expand ~1024x: a 2-byte "00 ff" tag emits 256 zero words
+	# (2 KiB). Without a cap, a hostile all-zero-run stream balloons to gigabytes
+	# during unpack — before framing or the reader's traversal limit ever apply.
+	# unpack() must abort (empty) once output passes max_out_words; 0 = unlimited
+	# so trusted round-trip callers (every assert above) are unaffected.
+	var packed: PackedByteArray = []
+	var k: int = 0
+	while k < 64:
+		packed.append(0x00) # zero-word tag
+		packed.append(0xff) # + 255 more zero words = 256 words per run
+		k += 1
+	# 64 runs * 256 words = 16384 words = 131072 bytes when uncapped.
+	assert_eq(CapnPacked.unpack(packed, 0).size(), 131072, "max_out_words=0 stays unlimited")
+	assert_true(CapnPacked.unpack(packed, 100).is_empty(), "unpack aborts empty past the cap")
+	# End-to-end: open() caps unpack against the traversal limit, so a packed
+	# stream that unpacks past it is rejected without the giant allocation.
+	var tiny: CapnLimits = CapnLimits.new(100, 64) # 100-word traversal ceiling
+	assert_null(
+		CapnReader.open(packed, true, tiny),
+		"open must reject a packed stream that unpacks past the traversal limit",
+	)
+
+
 func _repeat(byte_value: int, count: int) -> PackedByteArray:
-	var out: PackedByteArray = PackedByteArray()
+	var out: PackedByteArray = []
 	out.resize(count)
 	out.fill(byte_value)
 	return out

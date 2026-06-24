@@ -15,11 +15,17 @@ const WORD_BYTES: int = 8
 
 
 static func open(bytes: PackedByteArray, packed: bool, limits: CapnLimits = null) -> Message:
-	var raw: PackedByteArray = CapnPacked.unpack(bytes) if packed else bytes
+	# Resolve limits up front so the unpack step can be capped: packed zero/literal
+	# runs expand up to ~1024x, so a hostile stream would OOM during unpack — long
+	# before framing or the traversal limit see it. Cap the unpacked size at the
+	# traversal-word ceiling; any message that unpacks larger would be rejected by
+	# the reader anyway.
+	var lim: CapnLimits = limits if limits != null else CapnLimits.new()
+	var raw: PackedByteArray = CapnPacked.unpack(bytes, lim.traversal_word_limit) if packed else bytes
 	var segs: CapnSegments = CapnFraming.read(raw)
 	if segs == null:
 		return null
-	return _make_message(segs, limits)
+	return _make_message(segs, lim)
 
 
 ## Open from already-parsed segments (no stream framing) — e.g. the `flat`

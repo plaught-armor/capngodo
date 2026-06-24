@@ -22,15 +22,22 @@ const MAX_RUN: int = 255
 
 
 ## Returns the unpacked words, or an empty array on malformed input (push_error).
-static func unpack(packed: PackedByteArray) -> PackedByteArray:
-	var out: PackedByteArray = PackedByteArray()
+# max_out_words caps the unpacked size (0 = unlimited, for trusted round-trip
+# callers). Packed zero/literal runs expand up to ~1024x (a 2-byte zero-run tag
+# emits up to 256 words), so on untrusted input a hostile stream balloons to
+# gigabytes before any reader-side limit applies. CapnReader.open passes the
+# traversal-word ceiling; a message that unpacks past it would be rejected when
+# read, so capping here is both safe and OOM-preventing. Aborts empty on breach.
+static func unpack(packed: PackedByteArray, max_out_words: int = 0) -> PackedByteArray:
+	var out: PackedByteArray = []
 	var n: int = packed.size()
 	var i: int = 0
+	var max_bytes: int = max_out_words * WORD_BYTES # 0 => unlimited
 	# i advances by >= 1 each iteration (tag byte), so n bounds the loop.
 	while i < n:
 		var tag: int = packed[i]
 		i += 1
-		var word: PackedByteArray = PackedByteArray()
+		var word: PackedByteArray = []
 		word.resize(WORD_BYTES)
 		for bit: int in WORD_BYTES:
 			if (tag & (1 << bit)) != 0:
@@ -49,7 +56,7 @@ static func unpack(packed: PackedByteArray) -> PackedByteArray:
 			var zeros: int = packed[i]
 			i += 1
 			if zeros > 0:
-				var pad: PackedByteArray = PackedByteArray()
+				var pad: PackedByteArray = []
 				pad.resize(zeros * WORD_BYTES)
 				out.append_array(pad)
 		elif tag == 0xff:
@@ -65,6 +72,11 @@ static func unpack(packed: PackedByteArray) -> PackedByteArray:
 			if raw_bytes > 0:
 				out.append_array(packed.slice(i, i + raw_bytes))
 				i += raw_bytes
+		# Amplification guard: abort once the unpacked size passes the cap, before
+		# the next run can grow it further (each iteration adds at most ~2 KiB).
+		if max_bytes > 0 and out.size() > max_bytes:
+			push_error("CapnPacked.unpack: unpacked size exceeds limit (amplification guard)")
+			return []
 	return out
 
 # --- pack ----------------------------------------------------------------
@@ -74,14 +86,14 @@ static func pack(unpacked: PackedByteArray) -> PackedByteArray:
 	if unpacked.size() % WORD_BYTES != 0:
 		push_error("CapnPacked.pack: input not word-aligned (%d bytes)" % unpacked.size())
 		return PackedByteArray()
-	var out: PackedByteArray = PackedByteArray()
+	var out: PackedByteArray = []
 	@warning_ignore("integer_division")
 	var word_count: int = unpacked.size() / WORD_BYTES
 	var w: int = 0
 	while w < word_count:
 		var base: int = w * WORD_BYTES
 		var tag: int = 0
-		var content: PackedByteArray = PackedByteArray()
+		var content: PackedByteArray = []
 		for j: int in WORD_BYTES:
 			var b: int = unpacked[base + j]
 			if b != 0:
