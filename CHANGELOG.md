@@ -6,6 +6,21 @@ All notable changes to capngodo are documented here. Format loosely follows
 
 ## [Unreleased]
 
+### Security
+
+- **Element-size confusion guard on bulk list getters.** The bulk primitive
+  decoders (`to_int32_array`, `to_int64_array`, `to_float32_array`,
+  `to_float64_array`, `to_byte_array`) now reject a list whose wire element size
+  disagrees with the schema width (`had_error` + empty) instead of silently
+  reinterpreting wrong-width bytes — the spec forbids primitive element-size
+  promotion, so a legal message always matches and the guard never false-rejects
+  (an absent/empty list still reads back as an empty array). This was never a
+  memory-safety issue (Godot's `slice`/`decode_*` clamp on overrun, so a
+  mismatch produced wrong/empty data, never a crash), but it now fails loud
+  rather than silent. The per-element getters and the `List(primitive) →
+  List(struct)` upgrade path remain wire-trusting — tracked as `ES1` in
+  `docs/DEFERRED.md`.
+
 ## [0.2.1] — 2026-06-24
 
 ### Security

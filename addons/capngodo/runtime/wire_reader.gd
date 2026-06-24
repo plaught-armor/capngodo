@@ -889,29 +889,47 @@ class ListReader extends RefCounted:
 	# in one C++ call instead of a per-element decode loop (~100x for large lists).
 	# The wire stores primitive lists contiguous + little-endian, matching the
 	# Packed*Array in-memory layout — correct on little-endian hosts (every platform
-	# Godot ships). Caller (codegen) only routes the clean fixed-width types here;
-	# the list is never composite, so the span is (first_elem_word, count * width).
+	# Godot ships). Codegen routes the schema's fixed-width type here; the guards
+	# reject a hostile wire whose element size disagrees (capnp forbids primitive
+	# element-size promotion, so a legal message always matches), turning silent
+	# wrong/empty data into a loud had_error. count==0 (absent/empty field) skips
+	# the check so an absent list still reads back as an empty array, not an error.
 	func to_float32_array() -> PackedFloat32Array:
+		if count > 0 and elem_size_code != CapnPointer.ElemSize.FOUR_BYTES:
+			msg.fail("list element-size mismatch: expected 4-byte elements")
+			return []
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 4).to_float32_array()
 
 
 	func to_float64_array() -> PackedFloat64Array:
+		if count > 0 and elem_size_code != CapnPointer.ElemSize.EIGHT_BYTES:
+			msg.fail("list element-size mismatch: expected 8-byte elements")
+			return []
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 8).to_float64_array()
 
 
 	func to_int32_array() -> PackedInt32Array:
+		if count > 0 and elem_size_code != CapnPointer.ElemSize.FOUR_BYTES:
+			msg.fail("list element-size mismatch: expected 4-byte elements")
+			return []
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 4).to_int32_array()
 
 
 	func to_int64_array() -> PackedInt64Array:
+		if count > 0 and elem_size_code != CapnPointer.ElemSize.EIGHT_BYTES:
+			msg.fail("list element-size mismatch: expected 8-byte elements")
+			return []
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count * 8).to_int64_array()
 
 
 	func to_byte_array() -> PackedByteArray:
+		if count > 0 and elem_size_code != CapnPointer.ElemSize.BYTE:
+			msg.fail("list element-size mismatch: expected 1-byte elements")
+			return []
 		var off: int = first_elem_word * WORD_BYTES
 		return _buf().slice(off, off + count)
 
