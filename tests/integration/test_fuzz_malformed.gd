@@ -151,6 +151,33 @@ func test_far_composite_amplification_capped() -> void:
 	assert_eq(lr.size(), 0, "amplified composite via far pointer must read back empty")
 	assert_true(msg.had_error, "traversal limit must flag the far-routed amplified list")
 
+
+## Element-size confusion guard. capnp forbids primitive element-size promotion,
+## so reading a list through a bulk getter whose width disagrees with the wire
+## element size is a malformed message — the reader must fail loud (had_error +
+## empty) instead of silently slicing wrong-width bytes. Message: root struct ->
+## ptr[0] = a 4-element BYTE list. Read as bytes it is valid; read as int32 it
+## must be rejected.
+func test_bulk_getter_element_size_mismatch_flagged() -> void:
+	var b: PackedByteArray = []
+	b.resize(32)
+	b.encode_u32(0, 0) # segCount-1 = 0
+	b.encode_u32(4, 3) # seg0 = 3 words
+	b.encode_u32(8, 0x00000000) # w0 lo: root struct ptr, offset 0
+	b.encode_u32(12, 0x00010000) # w0 hi: data_words=0, ptr_words=1
+	b.encode_u32(16, 0x00000001) # w1 lo: list ptr, offset 0 -> body at w2
+	b.encode_u32(20, 0x00000022) # w1 hi: elem_size=BYTE(2), count=4
+	b.encode_u32(24, 0x04030201) # w2: 4 body bytes
+	b.encode_u32(28, 0x00000000)
+	var msg: CapnReader.Message = CapnReader.open(b, false)
+	assert_not_null(msg, "frame is well-formed; open must succeed")
+	var lr: CapnReader.ListReader = msg.get_root().get_list(0)
+	assert_eq(lr.size(), 4, "byte list decodes with its real count")
+	assert_eq(lr.to_byte_array().size(), 4, "matching-width view is valid")
+	assert_false(msg.had_error, "a matching-width view sets no error")
+	assert_true(lr.to_int32_array().is_empty(), "int32 view of a byte list must be rejected")
+	assert_true(msg.had_error, "element-size mismatch must set had_error")
+
 # --- hostile input generators -------------------------------------------
 
 
