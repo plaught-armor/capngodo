@@ -147,18 +147,48 @@ static func _uniquify(flat: String, used: Dictionary[String, bool]) -> String:
 ## c++.capnp annotations — never requested — are skipped, avoiding a bogus
 ## "C++Capnp" reference). Request all your files together: `capnp compile a b`.
 static func _add_cross_file_names(current_file_id: int, by_id: Dictionary[int, CapnReader.StructReader], flat_by_id: Dictionary[int, String], requested_ids: Dictionary[int, bool]) -> void:
-	for fid: int in requested_ids:
-		if fid == current_file_id:
-			continue
-		var fnode: CapnReader.StructReader = by_id.get(fid)
-		if fnode == null:
+	# Optimistic resolution: qualify types from EVERY imported file node, not only
+	# the ones in this request. GDScript class_names are global, so a field of an
+	# imported type resolves to <OtherUmbrella>.<flat> as long as the user
+	# generated that file (in any run). A file not in requested_ids gets a one-shot
+	# warning — the ref is live only if its file was generated separately.
+	for fid: int in by_id:
+		var fnode: CapnReader.StructReader = by_id[fid]
+		if fid == current_file_id or CapnSchema.node_which(fnode) != CapnSchema.NodeWhich.FILE:
 			continue
 		var other: Dictionary[int, String] = { }
 		_collect(fnode, by_id, other)
+		if other.is_empty() or not _has_referenceable_type(other, by_id):
+			# Skip annotation-only files — capnp's built-in c++.capnp is imported
+			# everywhere but defines no field-referenceable struct/enum/interface, so
+			# qualifying it would only add dead C++Capnp entries + warning noise.
+			continue
 		var umbrella: String = _umbrella_class(CapnSchema.node_display_name(fnode))
+		var imported_only: bool = not requested_ids.has(fid)
+		var warned: bool = false
 		for id: int in other:
-			if not flat_by_id.has(id):
-				flat_by_id[id] = "%s.%s" % [umbrella, other[id]]
+			if flat_by_id.has(id):
+				continue
+			flat_by_id[id] = "%s.%s" % [umbrella, other[id]]
+			if imported_only and not warned:
+				warned = true
+				push_warning(
+					(
+							"[CapnCodegen] resolving imported types to %s (from '%s', not in this request) — generate that file too"
+							% [umbrella, CapnSchema.node_display_name(fnode)]
+					),
+				)
+
+
+## True if any collected node is a struct/enum/interface — i.e. a type a field
+## could reference. Annotation/const-only files (capnp's built-in c++.capnp) are
+## not worth qualifying for cross-file resolution.
+static func _has_referenceable_type(collected: Dictionary[int, String], by_id: Dictionary[int, CapnReader.StructReader]) -> bool:
+	for id: int in collected:
+		var w: CapnSchema.NodeWhich = CapnSchema.node_which(by_id[id])
+		if w == CapnSchema.NodeWhich.STRUCT or w == CapnSchema.NodeWhich.ENUM or w == CapnSchema.NodeWhich.INTERFACE:
+			return true
+	return false
 
 # --- emission ------------------------------------------------------------
 
