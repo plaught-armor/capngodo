@@ -6,6 +6,8 @@ All notable changes to capngodo are documented here. Format loosely follows
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-06-24
+
 ### Security
 
 - **List-amplification OOM hardening.** A malformed message could claim a list
