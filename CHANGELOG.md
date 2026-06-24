@@ -4,6 +4,52 @@ All notable changes to capngodo are documented here. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Lazy reader iteration** — for every `List(struct)` field the codegen now
+  emits `iter_<field>()` alongside the eager `get_<field>()`. It returns a
+  `CapnReader.StructListIter` that yields **one reused element `Reader`** per
+  step (`for ph in person.iter_phones(): …`), so an iterate-and-read loop
+  allocates a single element reader instead of N + the `Array`. The yielded
+  reader is a transient view (read fields out, don't retain). Backed by the new
+  `StructReader.fill_list(ptr_index, out)` runtime primitive. The eager
+  `get_<field>() -> Array[Reader]` is unchanged for random-access / retain.
+- **Lazy builder iteration** — symmetric `init_<field>_iter(n)` returns a
+  `CapnBuilder.StructListBuilderIter` that yields one reused element `Builder`
+  per step (`for ph in person.init_phones_iter(2): ph.set_…`), avoiding the
+  per-element `Builder` + `Array`.
+- **Robustness fuzz suite** — a valid-roundtrip property test (random
+  AddressBook data → build → serialize packed/unpacked → read, eager + lazy,
+  ~28k asserts) and a malformed-input fuzz (800 hostile buffers: random /
+  byte-flipped / truncated / hand-crafted-adversarial, opened packed +
+  unpacked and fully traversed) proving the decoder never crashes, hangs, or
+  OOMs on untrusted bytes.
+
+### Changed
+
+- **Cross-file type resolution is now optimistic.** A field of an imported type
+  resolves to that file's umbrella class (`Common.Point` →
+  `CommonCapnp.Point.Reader`) even when the imported file is **not** in the same
+  generation request — GDScript `class_name`s are global, so the reference is
+  live as long as you generated that file in any run. A file not in the request
+  emits a one-shot warning; capnp's built-in `c++.capnp` is skipped. Previously
+  an imported-but-not-requested type degraded to an unresolved stub, forcing
+  `capnp compile a b` everything together.
+- **Decode ~3.2× faster, build ~22% faster** (plus the lazy paths above). Pure
+  internal work — public API and wire output unchanged. Decode: collapsed
+  per-dereference allocations (pointer-decode + reader scratch), flattened the
+  pointer-follow call chain, and inlined the Text/Data/`get_list` hot paths.
+  Build: alloc-free pointer writes (no per-pointer scratch `PackedByteArray`)
+  and a single bulk `append_array` for Text/Data bodies instead of a per-byte
+  loop.
+
+### Tests
+
+- 104 → 166 GUT tests (added the two fuzz suites, lazy reader/builder coverage,
+  and a single-file cross-file resolution test).
+
 ## [0.1.0] — 2026-06-22
 
 First release. Pure-GDScript Cap'n Proto serialization + schema codegen for
